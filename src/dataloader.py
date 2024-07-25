@@ -4,10 +4,12 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 import numpy as np
+from tqdm import tqdm
+
 
 from utils import ToSoccerMapTensor
 
-class CSVDataset(Dataset):
+class PFFDataset(Dataset):
     def __init__(self, directory, split_ratio=0.8):
         self.data = []
         self.labels = []
@@ -22,9 +24,10 @@ class CSVDataset(Dataset):
             if filename.endswith('.csv'):
                 filepath = os.path.join(directory, filename)
                 df = pd.read_csv(filepath)
+                df.dropna(subset=['pass_outcome_type'], inplace=True)
                 tensor_converter = ToSoccerMapTensor()
                 
-                for _, row in df.iterrows():
+                for _, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
                     sample = {
                         "ball_x_start": row["ball_x_start"],
                         "ball_y_start": row["ball_y_start"],
@@ -54,7 +57,7 @@ class CSVDataset(Dataset):
         target = self.train_labels[idx]
         return matrix, mask, target
     
-    def get_test_data(self):
+    def get_validation_data(self):
         test_data = torch.stack(self.test_data)
         test_labels = torch.tensor(self.test_labels, dtype=torch.long)
         test_mask = torch.stack(self.test_mask)
@@ -68,10 +71,10 @@ class CSVDataset(Dataset):
 
 if __name__ == "__main__":
     directory = '/home/diogo/Documents/Simplified_EPV_in_PFF_Data/data'
-    dataset = CSVDataset(directory, split_ratio=0.8)
+    dataset = PFFDataset(directory, split_ratio=0.8)
 
     train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(dataset.get_test_data(), batch_size=32, shuffle=False)
+    test_loader = DataLoader(dataset.get_validation_data(), batch_size=32, shuffle=False)
 
     for batch_idx, (data, mask, target) in enumerate(train_loader):
         print(f'Batch {batch_idx + 1}:')
