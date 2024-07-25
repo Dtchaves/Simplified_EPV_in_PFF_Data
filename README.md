@@ -24,4 +24,4 @@ To use this repository, clone it to your local machine:
 
 1. Fernández, J., Bornn, L., & Cervone, D. (2021). A framework for the fine-grained evaluation of the instantaneous expected value of soccer possessions. Machine Learning, 110(6), 1389--1427. Springer. DOI: 10.1007/s10994-021-05989-6 [https://arxiv.org/abs/2011.09426]
 
-2. Fernández, J., & Bornn, L. (2020). SoccerMap: A Deep Learning Architecture for Visually-Interpretable Analysis in Soccer. [[Link](https://arxiv.org/abs/2010.10202)]
+2. Fernández, J., & Bornn, L. (2020). SoccerMap: A Deep Learning Architecture for Visually-Interpretable Analysis in Soccer. [https://arxiv.org/abs/2010.10202]
