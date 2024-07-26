@@ -113,7 +113,7 @@ class Trainer:
                     optim_func.zero_grad()
                     
                     surface = self.model(matriz)
-                    pred = pixel(surface, mask)
+                    pred = pixel(surface, mask)[0]
                     loss = loss_func(pred, label)
 
                     
