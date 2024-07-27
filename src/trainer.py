@@ -46,16 +46,15 @@ class Trainer:
             
         self.model_name = model_name
         self.path_save_model = path_save_model
+        self.path_save_loss = path_save_loss
         
         self.model = model
         self.data_directory = data_directory
 
         
     def save_models(self,ckp,t):
-        if not ckp:
-            save_path = os.path.join(self.path_save_best_model, self.model_name + '.pt')
-        else:
-            save_path = os.path.join(self.path_save_ckp, self.model_name + f"_{t}" '.pt')
+
+        save_path = os.path.join(self.path_save_model, self.model_name + f"_{t}" '.pt')
             
         torch.save(self.model,save_path)
         
@@ -91,7 +90,8 @@ class Trainer:
                 optim_func.zero_grad()
                 
                 surface = self.model(matriz)
-                pred = pixel(surface, mask)[0]
+                pred = pixel(surface, mask).view(-1)
+                print(label)
                 loss = loss_func(pred, label)
                 loss.backward()
                 optim_func.step()
@@ -113,7 +113,7 @@ class Trainer:
                     optim_func.zero_grad()
                     
                     surface = self.model(matriz)
-                    pred = pixel(surface, mask)[0]
+                    pred = pixel(surface, mask).view(-1)
                     loss = loss_func(pred, label)
 
                     
@@ -131,7 +131,7 @@ class Trainer:
             #if t % 10 == 0:
             logging.info(f"Epoch: {t}\nTrain Loss: {train_loss}\nValidation Loss: {val_loss}\n")
             if t != 0:
-                utils.plot_loss(conv_train_losses,conv_val_losses,t,self.model_name,self.path_save_plot)         
+                utils.plot_loss(conv_train_losses,conv_val_losses,t,self.model_name,self.path_save_loss)         
                     
                     
         
@@ -148,11 +148,11 @@ class TrainerConfig:
     
     
     model_name:str = "Pass_success_probability"
-    path_save_model: str = '/home/diogo/Documents/Simplified_EPV_in_PFF_Data/results/models'
-    path_save_loss: str = '/home/diogo/Documents/Simplified_EPV_in_PFF_Data/results/loss'
+    path_save_model: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/models'
+    path_save_loss: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/loss'
     
     model: SoccerMap =  field(default_factory=lambda:SoccerMap(in_channels=15))    
-    data_directory:str = '/home/diogo/Documents/Simplified_EPV_in_PFF_Data/data'
+    data_directory:str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data'
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO) 

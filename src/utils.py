@@ -2,6 +2,40 @@ import pandas as pd
 import numpy as np
 import torch
 
+import matplotlib.pyplot as plt
+import os
+
+def plot_loss(train_losses, val_losses,epoch,model_name,path_save_plot):
+    fig = plt.figure(figsize=(13,5))
+    ax = fig.gca()
+    plt.ion()
+    ax.plot(train_losses, label="Train loss", color = "tab:blue")
+    ax.plot(val_losses, label="Validation loss", color = "tab:orange")
+    ax.legend(fontsize="16")
+    ax.set_xlabel("Epochs", fontsize="16")
+    ax.set_ylabel("Loss", fontsize="16")
+    ax.set_title(f"Training and Validation Loss", fontsize="16")
+    
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.legend(fontsize=12)
+
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+
+    ax = plt.gca()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_linewidth(0.5)
+    ax.spines["left"].set_linewidth(0.5)
+
+    ax.tick_params(width=0.5)
+
+    ax.set_facecolor("whitesmoke")
+    model = model_name + ".png" 
+    save_path = os.path.join(path_save_plot, model)
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+    
 
 class ToSoccerMapTensor:
     """Convert inputs to a spatial representation.
@@ -23,11 +57,11 @@ class ToSoccerMapTensor:
 
     def __call__(self, sample):
         pass_outcome_mapping = {
-            'C': 0,
-            'D': 1,
-            'B': 2,
-            'O': 3,
-            'S': 4
+            'C': 1,
+            'D': 0,
+            'B': 0,
+            'O': 0,
+            'S': 0
         }
         start_x, start_y, end_x, end_y = (
             sample["ball_x_start"],
@@ -63,11 +97,11 @@ class ToSoccerMapTensor:
         # Channel 3: Distance to ball
         yy, xx = np.ogrid[0.5: self.y_bins, 0.5: self.x_bins]
         x0_ball, y0_ball = self._get_cell_indexes(ball_coo[:, 0], ball_coo[:, 1])
-        matrix[2, :, :] = np.sqrt((xx - x0_ball) * 2 + (yy - y0_ball) * 2)
+        matrix[2, :, :] = np.sqrt((xx - x0_ball) ** 2 + (yy - y0_ball) ** 2)
 
         # Channel 4: Distance to goal
         x0_goal, y0_goal = self._get_cell_indexes(goal_coo[:, 0], goal_coo[:, 1])
-        matrix[3, :, :] = np.sqrt((xx - x0_goal) * 2 + (yy - y0_goal) * 2)
+        matrix[3, :, :] = np.sqrt((xx - x0_goal) ** 2 + (yy - y0_goal) ** 2)
 
         # Channel 5: Cosine of the angle between the ball and goal
         coords = np.dstack(np.meshgrid(xx, yy))
@@ -117,7 +151,7 @@ class ToSoccerMapTensor:
 
         # Channel 15: Distance to event's origin location
         x0_start, y0_start = self._get_cell_indexes(np.array([start_x]), np.array([start_y]))
-        matrix[14, :, :] = np.sqrt((xx - x0_start) * 2 + (yy - y0_start) * 2)
+        matrix[14, :, :] = np.sqrt((xx - x0_start) ** 2 + (yy - y0_start) ** 2)
 
         mask = np.zeros((1, self.y_bins, self.x_bins))
         end_ball_coo = np.array([[end_x, end_y]])

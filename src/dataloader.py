@@ -25,8 +25,8 @@ class PFFDataset(Dataset):
                 filepath = os.path.join(directory, filename)
                 df = pd.read_csv(filepath)
                 df.dropna(subset=['pass_outcome_type'], inplace=True)
+                df['carrier_velocity'] = np.sqrt(df['vx_player_201']**2 + df['vy_player_201']**2)
                 tensor_converter = ToSoccerMapTensor()
-                
                 for _, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
                     sample = {
                         "ball_x_start": row["ball_x_start"],
@@ -85,3 +85,7 @@ if __name__ == "__main__":
         print('Target:')
         print(target)
         print('---')
+goal_x_left, goal_y_left = -52.5, 0
+goal_x_right, goal_y_right = 52.5, 0
+
+
