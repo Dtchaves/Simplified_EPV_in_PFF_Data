@@ -38,6 +38,8 @@ def plot_loss(train_losses, val_losses,epoch,model_name,path_save_plot):
     
 
 
+
+
 class ToSoccerMapTensor:
     """Convert inputs to a spatial representation.
 
@@ -85,8 +87,6 @@ class ToSoccerMapTensor:
         ball_coo = np.array([[start_x, start_y]])
         goal_coo = np.array([[52.5, 0]])
         team_id = sample['team_id']
-        
-
         player_columns = [col for col in frame.columns if col.startswith('x_player_')]
 
         players_att_coo = []
@@ -107,7 +107,7 @@ class ToSoccerMapTensor:
         players_att_coo = np.array(players_att_coo)
         players_def_coo = np.array(players_def_coo)
 
-        matrix = np.zeros((15, self.y_bins, self.x_bins))
+        matrix = np.zeros((17, self.y_bins, self.x_bins))
 
         # Channel 1: Locations of attacking team
         x_bin_att, y_bin_att = self._get_cell_indexes(players_att_coo[:, 0], players_att_coo[:, 1])
@@ -167,20 +167,39 @@ class ToSoccerMapTensor:
         matrix[11, y0_ball, x0_ball] = carrier_velocity
 
         # Channels 13-14: Possession team players' velocity (x and y)
-        vx_columns = [col for col in frame.columns if col.startswith('vx_player_') and not frame[col].isna().any()]
-        vy_columns = [col for col in frame.columns if col.startswith('vy_player_') and not frame[col].isna().any()]
+        players_ve_att_coo = []
+        players_ve_def_coo = []
+        for player_col in player_columns:
+            player_id = player_col.split('_')[-1]
+            x_col = f'vx_player_{player_id}'
+            y_col = f'vy_player_{player_id}'
 
-        players_vel_coo = frame[vx_columns + vy_columns].values
-
+            team_id_col = frame[f'team_id_player_{player_id}']
+            if not pd.isna(team_id_col).all():  # Ensure there are no NaN values
+                if int(team_id_col.iloc[0]) == team_id:
+                    players_ve_att_coo.append([frame[x_col], frame[y_col]])
+                else:
+                    players_ve_def_coo.append([frame[x_col], frame[y_col]])
+                    
+        
         x_bin_att_vel, y_bin_att_vel = self._get_cell_indexes(players_att_coo[:, 0], players_att_coo[:, 1])
-        for i in range(len(players_vel_coo)):
+        for i in range(len(players_ve_att_coo)):
             if 0 <= x_bin_att_vel[i] < matrix.shape[2] and 0 <= y_bin_att_vel[i] < matrix.shape[1]:
-                matrix[12, y_bin_att_vel[i], x_bin_att_vel[i]] = players_vel_coo[i, 0]
-                matrix[13, y_bin_att_vel[i], x_bin_att_vel[i]] = players_vel_coo[i, 1]
-
-        # Channel 15: Distance to event's origin location
+                matrix[12, y_bin_att_vel[i], x_bin_att_vel[i]] = players_ve_att_coo[i][0]
+                matrix[13, y_bin_att_vel[i], x_bin_att_vel[i]] = players_ve_att_coo[i][1]
+                
+        
+        # Channels 15-16: Defending team players' velocity (x and y)
+        x_bin_def_vel, y_bin_def_vel = self._get_cell_indexes(players_def_coo[:, 0], players_def_coo[:, 1])
+        for i in range(len(players_ve_att_coo)):
+            if 0 <= x_bin_att_vel[i] < matrix.shape[2] and 0 <= y_bin_att_vel[i] < matrix.shape[1]:
+                matrix[14, y_bin_def_vel[i], x_bin_def_vel[i]] = players_ve_def_coo[i][0]
+                matrix[15, y_bin_def_vel[i], x_bin_def_vel[i]] = players_ve_def_coo[i][1]
+                
+                
+        # Channel 17: Distance to event's origin location
         x0_start, y0_start = self._get_cell_indexes(np.array([start_x]), np.array([start_y]))
-        matrix[14, :, :] = np.sqrt((xx - x0_start) ** 2 + (yy - y0_start) ** 2)
+        matrix[16, :, :] = np.sqrt((xx - x0_start) ** 2 + (yy - y0_start) ** 2)
 
         mask = np.zeros((1, self.y_bins, self.x_bins))
         end_ball_coo = np.array([[end_x, end_y]])
