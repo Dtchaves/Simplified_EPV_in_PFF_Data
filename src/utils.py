@@ -63,6 +63,9 @@ class ToSoccerMapTensor:
             'B': 0,
             'O': 0,
             'S': 0,
+            'G': 0,
+            'I': 0,
+            
         }
         start_x, start_y, end_x, end_y = (
             sample["ball_x_start"],

@@ -20,6 +20,7 @@ class PFFDataset(Dataset):
         )
         
     def _load_data(self, directory):
+        print(f"Temos {len(os.listdir(directory))} amostas")
         for filename in os.listdir(directory):
             if filename.endswith('.csv'):
                 filepath = os.path.join(directory, filename)

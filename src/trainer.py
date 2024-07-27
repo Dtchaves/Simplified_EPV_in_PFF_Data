@@ -54,7 +54,7 @@ class Trainer:
         
     def save_models(self,ckp,t):
 
-        save_path = os.path.join(self.path_save_model, self.model_name + f"_{t}" '.pt')
+        save_path = os.path.join(self.path_save_model, self.model_name, '.pt')
             
         torch.save(self.model,save_path)
         
@@ -151,7 +151,7 @@ class TrainerConfig:
     path_save_loss: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/loss'
     
     model: SoccerMap =  field(default_factory=lambda:SoccerMap(in_channels=15))    
-    data_directory:str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data'
+    data_directory:str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Pass'
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO) 
