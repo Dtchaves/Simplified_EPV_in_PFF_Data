@@ -25,20 +25,38 @@ class PFFDataset(Dataset):
                 filepath = os.path.join(directory, filename)
                 df = pd.read_csv(filepath)
                 df.dropna(subset=['pass_outcome_type'], inplace=True)
-                df['carrier_velocity'] = np.sqrt(df['vx_player_201']**2 + df['vy_player_201']**2)
                 tensor_converter = ToSoccerMapTensor()
-                for _, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
+                for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
+                    player_id = int(row["player_id"])
+    
+                    # Finding the column that matches the condition
+                    passerPlayerColumn = [
+                        column.replace('original_pId_player_', '')
+                        for column in df.columns
+                        if 'original_pId_player' in column and player_id in df[column].values
+                    ]
+                    
+                    if passerPlayerColumn:  # Check if the list is not empty
+                        passerPlayerColumn = int(passerPlayerColumn[0])
+                        df.loc[idx, 'carrier_velocity'] = np.sqrt(
+                            df.loc[idx, f'vx_player_{passerPlayerColumn}']**2 +
+                            df.loc[idx, f'vy_player_{passerPlayerColumn}']**2
+                        )
+                        df.loc[idx, 'vx_carrier'] = df.loc[idx, f'vx_player_{passerPlayerColumn}']
+                        df.loc[idx, 'vy_carrier'] = df.loc[idx, f'vy_player_{passerPlayerColumn}']
+                        
                     sample = {
                         "ball_x_start": row["ball_x_start"],
                         "ball_y_start": row["ball_y_start"],
                         "ball_x_end": row["ball_x_end"],
                         "ball_y_end": row["ball_y_end"],
-                        "vx_player_201": row["vx_player_201"],
-                        "vy_player_201": row["vy_player_201"],
                         "pass_outcome_type": row["pass_outcome_type"],
                         "team_id": row["team_id"],
-                        "carrier_velocity": row["carrier_velocity"],
-                        "frame": df[df["team_id"] == row["team_id"]]
+                        "vx_carrier": df.loc[idx, 'vx_carrier'],
+                        "vy_carrier":df.loc[idx, 'vx_carrier'],
+                        "carrier_velocity": df.loc[idx, 'carrier_velocity'],
+                        "frame": df.loc[[idx]],
+                
                     }
                     
                     # Transforme a amostra e obtenha a máscara e o target

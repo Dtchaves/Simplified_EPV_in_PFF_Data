@@ -91,7 +91,6 @@ class Trainer:
                 
                 surface = self.model(matriz)
                 pred = pixel(surface, mask).view(-1)
-                print(label)
                 loss = loss_func(pred, label)
                 loss.backward()
                 optim_func.step()
