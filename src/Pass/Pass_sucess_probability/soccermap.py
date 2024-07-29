@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # noqa: N812
+import torch.nn.functional as F 
 import matplotlib.pyplot as plt
 
 
@@ -105,7 +105,7 @@ class _FusionLayer(nn.Module):
         return out
 
 
-class SoccerMap(nn.Module):
+class SoccerMapPassSucess(nn.Module):
     """SoccerMap architecture.
 
     SoccerMap is a deep learning architecture that is capable of estimating
@@ -208,7 +208,7 @@ def test_soccer_map():
     input_tensor = torch.randn(batch_size, in_channels, height, width)
 
     # Instanciando o modelo SoccerMap
-    model = SoccerMap(in_channels=in_channels)
+    model = SoccerMapPassSucess(in_channels=in_channels)
 
     # Passando a entrada pelo modelo
     output = model(input_tensor)

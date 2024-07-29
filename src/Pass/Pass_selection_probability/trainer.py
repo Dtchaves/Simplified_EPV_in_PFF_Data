@@ -8,15 +8,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-import sys
-sys.path.append('..')
-
-from soccermap import SoccerMap,pixel
+from soccermap import SoccerMapPassSelect,pixel
 from torch.utils.data import DataLoader
 from dataloader import PFFDataset
 import utils
 
-class Trainer:
+class TrainerPassSelect:
     def __init__(
         self,
         device,
@@ -54,16 +51,16 @@ class Trainer:
         
     def save_models(self,ckp,t):
 
-        save_path = os.path.join(self.path_save_model, self.model_name, '.pt')
+        save_path = os.path.join(self.path_save_model, self.model_name + '.pt')
             
         torch.save(self.model,save_path)
         
     
     def run(self):
-        
+        self.batch_size = 32
         dataset = PFFDataset(self.data_directory, split_ratio=0.8)
 
-        train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
+        train_loader = DataLoader(dataset, batch_size=self.batch_size , shuffle=True)
         val_loader = DataLoader(dataset.get_validation_data(), batch_size=32, shuffle=False)
                 
         self.model = self.model.to(self.device) 
@@ -84,13 +81,15 @@ class Trainer:
                 
                 matriz = matriz.to(self.device)
                 mask = mask.to(self.device).float()
-                label = target.to(self.device).float()
                 
-    
+
                 optim_func.zero_grad()
                 
                 surface = self.model(matriz)
                 pred = pixel(surface, mask).view(-1)
+                label = torch.ones(len(pred), device=self.device).float()
+
+                
                 loss = loss_func(pred, label)
                 loss.backward()
                 optim_func.step()
@@ -106,13 +105,15 @@ class Trainer:
                     
                     matriz = matriz.to(self.device)
                     mask = mask.to(self.device).float()
-                    label = target.to(self.device).float()
                     
-        
+                    
+
                     optim_func.zero_grad()
                     
                     surface = self.model(matriz)
                     pred = pixel(surface, mask).view(-1)
+                    label = torch.ones(len(pred), device=self.device).float()
+
                     loss = loss_func(pred, label)
 
                     
@@ -138,23 +139,26 @@ class Trainer:
 class TrainerConfig:
     
     device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    epochs: int = 20
+    epochs: int = 100
     
-    learning_rate: float = 0.0001
+    learning_rate: float = 0.01
     weight_decay:float = 0.01
     loss_func:  nn.BCELoss = field(default_factory=lambda:nn.BCELoss())
     optim_func:  torch.optim.AdamW = field(default_factory=lambda:torch.optim.AdamW)
     
     
-    model_name:str = "Pass_success_probability"
+    model_name:str = "Pass_selection_probability"
     path_save_model: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/models'
     path_save_loss: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/loss'
     
-    model: SoccerMap =  field(default_factory=lambda:SoccerMap(in_channels=15))    
+    model: SoccerMapPassSelect =  field(default_factory=lambda:SoccerMapPassSelect(in_channels=17))    
     data_directory:str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Pass'
 
-if __name__ == "__main__":
+def Train():
     logging.basicConfig(level=logging.INFO) 
     config = TrainerConfig()
-    trainer = Trainer(**config.__dict__)
+    trainer = TrainerPassSelect(**config.__dict__)
     trainer.run()
+
+if __name__ == "__main__":
+    Train()
