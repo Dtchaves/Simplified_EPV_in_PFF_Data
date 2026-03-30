@@ -144,11 +144,11 @@ class TrainerConfig:
     
     
     model_name:str = "Pass_success_probability"
-    path_save_model: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/models'
-    path_save_loss: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/loss'
+    path_save_model: str = 'results/models'
+    path_save_loss: str = 'results/loss'
     
-    model: SoccerMapPassSucess =  field(default_factory=lambda:SoccerMapPassSucess(in_channels=17))    
-    data_directory:str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Pass'
+    model: SoccerMapPassSucess =  field(default_factory=lambda:SoccerMapPassSucess(in_channels=13))
+    data_directory:str = 'passes'
 
 def Train():
     logging.basicConfig(level=logging.INFO) 

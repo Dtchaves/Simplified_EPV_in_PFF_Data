@@ -167,20 +167,10 @@ class SoccerMapPassSelect(nn.Module):
         x4x2combined = self.fusion_x2_x4([self.up_x4(pred_x4), pred_x2])
         combined = self.fusion_x1_x2([self.up_x2(x4x2combined), pred_x1])
 
-
-
-        # Transform combined into a vector
-        combined_vector = combined.view(-1)
-
-        # Apply softmax
-        softmax_vector = F.softmax(combined_vector, dim=0)
-        print(softmax_vector)
-
-
-        # Transform back to the original shape
-        combined_softmax = softmax_vector.view_as(combined)
-
-        return combined_softmax
+        # Normalize each sample over spatial cells to produce a valid destination distribution.
+        batch_size = combined.shape[0]
+        spatial_softmax = F.softmax(combined.view(batch_size, -1), dim=1)
+        return spatial_softmax.view_as(combined)
 
 
 def pixel(surface, mask):

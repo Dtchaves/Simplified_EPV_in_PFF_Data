@@ -142,13 +142,13 @@ class TestPassSucess:
 
 @dataclass
 class TestConfig:
-    model_path: str = "/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/models/Pass_success_probability.pt"
-    train_directory: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Vazia'
-    test_directory: str = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Test_Pass'
+    model_path: str = "results/models/Pass_success_probability.pt"
+    train_directory: str = 'passes'
+    test_directory = None
     dataset: PFFDataset = PFFDataset(train_directory, test_directory, split_ratio=0.8)
     model_name: str = "Pass_success_probability"
-    path_metric: str = "/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/metrics"
-    path_heatmap: str = "/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/results/heatmaps"
+    path_metric: str = "/results/metrics"
+    path_heatmap: str = "/results/heatmaps"
     device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def Test():

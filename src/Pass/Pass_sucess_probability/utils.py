@@ -52,6 +52,69 @@ class ToSoccerMapTensor:
     def __init__(self, dim=(68, 104)):
         assert len(dim) == 2
         self.y_bins, self.x_bins = dim
+        self._last_att_lines = None
+        self._last_def_lines = None
+
+    @staticmethod
+    def _safe_float(value):
+        if isinstance(value, pd.Series):
+            if value.empty:
+                return np.nan
+            return float(value.iloc[0])
+        return float(value)
+
+    def _cluster_complete_linkage_1d(self, values, k=3):
+        values = np.asarray(values, dtype=float)
+        if len(values) == 0:
+            return np.array([], dtype=float)
+
+        clusters = [[v] for v in values]
+
+        def cluster_distance(a, b):
+            return max(abs(x - y) for x in a for y in b)
+
+        while len(clusters) > k:
+            best_i, best_j, best_dist = 0, 1, float("inf")
+            for i in range(len(clusters)):
+                for j in range(i + 1, len(clusters)):
+                    dist = cluster_distance(clusters[i], clusters[j])
+                    if dist < best_dist:
+                        best_i, best_j, best_dist = i, j, dist
+
+            merged = clusters[best_i] + clusters[best_j]
+            clusters = [clusters[idx] for idx in range(len(clusters)) if idx not in (best_i, best_j)]
+            clusters.append(merged)
+
+        centroids = np.array([np.mean(c) for c in clusters], dtype=float)
+        centroids.sort()
+        return centroids
+
+    def _resolve_vertical_lines(self, x_bin_values, last_lines):
+        if len(x_bin_values) >= 3:
+            return self._cluster_complete_linkage_1d(x_bin_values, k=3)
+        if last_lines is not None:
+            return last_lines
+        return np.linspace(0.2 * (self.x_bins - 1), 0.8 * (self.x_bins - 1), 3)
+
+    def _signed_nearest_vertical_map(self, line_x_bins):
+        x_axis = np.arange(self.x_bins, dtype=float)[None, :]
+        signed_distances = x_axis - line_x_bins[:, None]
+        nearest_idx = np.argmin(np.abs(signed_distances), axis=0)
+        nearest_signed = signed_distances[nearest_idx, np.arange(self.x_bins)]
+        normalized = np.clip(nearest_signed / (0.5 * self.x_bins), -1.0, 1.0)
+        return np.tile(normalized, (self.y_bins, 1))
+
+    def _normalize_surface(self, surface):
+        surface = np.asarray(surface, dtype=float)
+        if surface.shape == (1, self.y_bins, self.x_bins):
+            surface = surface[0]
+        if surface.shape != (self.y_bins, self.x_bins):
+            return np.full((self.y_bins, self.x_bins), 1.0 / (self.y_bins * self.x_bins), dtype=float)
+        clipped = np.clip(surface, 0.0, None)
+        total = clipped.sum()
+        if total <= 0:
+            return np.full((self.y_bins, self.x_bins), 1.0 / (self.y_bins * self.x_bins), dtype=float)
+        return clipped / total
 
     def _get_cell_indexes(self, x, y):
         x_bin = np.clip((x + 52.5) / 105 * self.x_bins, 0, self.x_bins - 1).astype(np.uint8)
@@ -75,7 +138,8 @@ class ToSoccerMapTensor:
             sample["ball_x_end"],
             sample["ball_y_end"],
         )
-        speed_x, speed_y = sample["vx_carrier"], sample["vy_carrier"]
+        carrier_vx = float(sample.get("vx_carrier", 0.0) or 0.0)
+        carrier_vy = float(sample.get("vy_carrier", 0.0) or 0.0)
         frame = sample["frame"]
 
         pass_outcome_type = sample.get("pass_outcome_type")
@@ -84,122 +148,102 @@ class ToSoccerMapTensor:
             raise ValueError(f"Invalid pass_outcome_type: {pass_outcome_type}")
         target = int(pass_outcome_type_mapped)
 
-        ball_coo = np.array([[start_x, start_y]])
-        goal_coo = np.array([[52.5, 0]])
+        ball_coo = np.array([[start_x, start_y]], dtype=float)
+        goal_coo = np.array([[52.5, 0]], dtype=float)
         team_id = sample['team_id']
         player_columns = [col for col in frame.columns if col.startswith('x_player_')]
 
-        players_att_coo = []
-        players_def_coo = []
+        matrix = np.zeros((13, self.y_bins, self.x_bins), dtype=float)
+        x0_ball, y0_ball = self._get_cell_indexes(ball_coo[:, 0], ball_coo[:, 1])
+        x0_goal, y0_goal = self._get_cell_indexes(goal_coo[:, 0], goal_coo[:, 1])
+
+        x_ball = float(x0_ball[0])
+        y_ball = float(y0_ball[0])
+        x_goal = float(x0_goal[0])
+        y_goal = float(y0_goal[0])
+
+        yy = np.arange(self.y_bins, dtype=float)[:, None]
+        xx = np.arange(self.x_bins, dtype=float)[None, :]
+
+        # Geometric channels over all field locations.
+        dx_goal = x_goal - xx
+        dy_goal = y_goal - yy
+        distance_to_goal = np.sqrt(dx_goal ** 2 + dy_goal ** 2)
+        angle_to_goal = np.abs(np.arctan2(dy_goal, dx_goal))
+
+        dx_ball = x_ball - xx
+        dy_ball = y_ball - yy
+        distance_to_ball = np.sqrt(dx_ball ** 2 + dy_ball ** 2)
+        angle_to_ball = np.arctan2(dy_ball, dx_ball)
+        sin_angle_to_ball = np.sin(angle_to_ball)
+        cos_angle_to_ball = np.cos(angle_to_ball)
+
+        pass_dx = np.broadcast_to(xx - x_ball, (self.y_bins, self.x_bins))
+        pass_dy = np.broadcast_to(yy - y_ball, (self.y_bins, self.x_bins))
+        pass_norm = np.sqrt(pass_dx ** 2 + pass_dy ** 2)
+        carrier_speed = float(np.hypot(carrier_vx, carrier_vy))
+        sin_angle_to_carrier_velocity = np.zeros((self.y_bins, self.x_bins), dtype=float)
+        cos_angle_to_carrier_velocity = np.zeros((self.y_bins, self.x_bins), dtype=float)
+        if carrier_speed > 0:
+            valid = pass_norm > 0
+            denom = pass_norm[valid] * carrier_speed
+            cos_vals = (pass_dx[valid] * carrier_vx + pass_dy[valid] * carrier_vy) / denom
+            sin_vals = (pass_dx[valid] * carrier_vy - pass_dy[valid] * carrier_vx) / denom
+            cos_angle_to_carrier_velocity[valid] = np.clip(cos_vals, -1.0, 1.0)
+            sin_angle_to_carrier_velocity[valid] = np.clip(sin_vals, -1.0, 1.0)
 
         for player_col in player_columns:
             player_id = player_col.split('_')[-1]
             x_col = f'x_player_{player_id}'
             y_col = f'y_player_{player_id}'
 
-            team_id_col = frame[f'team_id_player_{player_id}']
-            if not pd.isna(team_id_col).all():  # Ensure there are no NaN values
-                if int(team_id_col.iloc[0]) == team_id:
-                    players_att_coo.append([frame[x_col], frame[y_col]])
-                else:
-                    players_def_coo.append([frame[x_col], frame[y_col]])
+            team_col = f'team_id_player_{player_id}'
+            if team_col not in frame.columns:
+                continue
 
-        players_att_coo = np.array(players_att_coo)
-        players_def_coo = np.array(players_def_coo)
+            team_id_col = frame[team_col]
+            if pd.isna(team_id_col).all():
+                continue
 
-        matrix = np.zeros((17, self.y_bins, self.x_bins))
+            x_val = self._safe_float(frame[x_col])
+            y_val = self._safe_float(frame[y_col])
+            if np.isnan(x_val) or np.isnan(y_val):
+                continue
 
-        # Channel 1: Locations of attacking team
-        x_bin_att, y_bin_att = self._get_cell_indexes(players_att_coo[:, 0], players_att_coo[:, 1])
-        matrix[0, y_bin_att, x_bin_att] = 1
+            vx_col = f'vx_player_{player_id}'
+            vy_col = f'vy_player_{player_id}'
+            vx_val = self._safe_float(frame[vx_col]) if vx_col in frame.columns else 0.0
+            vy_val = self._safe_float(frame[vy_col]) if vy_col in frame.columns else 0.0
+            if np.isnan(vx_val):
+                vx_val = 0.0
+            if np.isnan(vy_val):
+                vy_val = 0.0
 
-        # Channel 2: Locations of defending team
-        x_bin_def, y_bin_def = self._get_cell_indexes(players_def_coo[:, 0], players_def_coo[:, 1])
-        matrix[1, y_bin_def, x_bin_def] = 1
+            x_bin, y_bin = self._get_cell_indexes(np.array([x_val]), np.array([y_val]))
+            x_idx = int(x_bin[0])
+            y_idx = int(y_bin[0])
 
-        # Channel 3: Distance to ball
-        yy, xx = np.ogrid[0.5: self.y_bins, 0.5: self.x_bins]
-        x0_ball, y0_ball = self._get_cell_indexes(ball_coo[:, 0], ball_coo[:, 1])
-        matrix[2, :, :] = np.sqrt((xx - x0_ball) ** 2 + (yy - y0_ball) ** 2)
+            if int(team_id_col.iloc[0]) == int(team_id):
+                matrix[0, y_idx, x_idx] = 1.0
+                matrix[2, y_idx, x_idx] += vx_val
+                matrix[3, y_idx, x_idx] += vy_val
+            else:
+                matrix[1, y_idx, x_idx] = 1.0
+                matrix[4, y_idx, x_idx] += vx_val
+                matrix[5, y_idx, x_idx] += vy_val
 
-        # Channel 4: Distance to goal
-        x0_goal, y0_goal = self._get_cell_indexes(goal_coo[:, 0], goal_coo[:, 1])
-        matrix[3, :, :] = np.sqrt((xx - x0_goal) ** 2 + (yy - y0_goal) ** 2)
-
-        # Channel 5: Cosine of the angle between the ball and goal
-        coords = np.dstack(np.meshgrid(xx, yy))
-        goal_coo_bin = np.concatenate((x0_goal, y0_goal))
-        ball_coo_bin = np.concatenate((x0_ball, y0_ball))
-        a = goal_coo_bin - coords
-        b = ball_coo_bin - coords
-        matrix[4, :, :] = np.clip(np.sum(a * b, axis=2) / (np.linalg.norm(a, axis=2) * np.linalg.norm(b, axis=2)), -1, 1)
-
-        # Channel 6: Sine of the angle between the ball and goal
-        matrix[5, :, :] = np.sqrt(1 - matrix[4, :, :] ** 2)
-
-        # Channel 7: Angle to the goal location
-        matrix[6, :, :] = np.abs(np.arctan2((y0_goal - coords[:, :, 1]), (x0_goal - coords[:, :, 0])))
-
-        # Channels 8-9: Ball speed
-        matrix[7, y0_ball, x0_ball] = speed_x
-        matrix[8, y0_ball, x0_ball] = speed_y
-
-        # Channel 10: Number of possession team’s players between the ball and every other location
-        dist_att_goal = matrix[0, :, :] * matrix[3, :, :]
-        dist_att_goal[dist_att_goal == 0] = np.nan
-        dist_ball_goal = matrix[3, y0_ball, x0_ball]
-        player_in_front_of_ball = dist_att_goal <= dist_ball_goal
-
-        outplayed1 = lambda x: np.sum(player_in_front_of_ball & (x <= dist_ball_goal) & (dist_att_goal >= x))
-        matrix[9, :, :] = np.vectorize(outplayed1)(matrix[3, :, :])
-
-        # Channel 11: Number of opponent team’s players between the ball and every other location
-        dist_def_goal = matrix[1, :, :] * matrix[3, :, :]
-        dist_def_goal[dist_def_goal == 0] = np.nan
-        dist_ball_goal = matrix[3, y0_ball, x0_ball]
-        player_in_front_of_ball = dist_def_goal <= dist_ball_goal
-
-        outplayed2 = lambda x: np.sum(player_in_front_of_ball & (x <= dist_ball_goal) & (dist_def_goal >= x))
-        matrix[10, :, :] = np.vectorize(outplayed2)(matrix[3, :, :])
-
-        # Channel 12: Carrier's velocity
-        carrier_velocity = sample["carrier_velocity"]
-        matrix[11, y0_ball, x0_ball] = carrier_velocity
-
-        # Channels 13-14: Possession team players' velocity (x and y)
-        players_ve_att_coo = []
-        players_ve_def_coo = []
-        for player_col in player_columns:
-            player_id = player_col.split('_')[-1]
-            x_col = f'vx_player_{player_id}'
-            y_col = f'vy_player_{player_id}'
-
-            team_id_col = frame[f'team_id_player_{player_id}']
-            if not pd.isna(team_id_col).all():  # Ensure there are no NaN values
-                if int(team_id_col.iloc[0]) == team_id:
-                    players_ve_att_coo.append([frame[x_col], frame[y_col]])
-                else:
-                    players_ve_def_coo.append([frame[x_col], frame[y_col]])
-                    
-        
-        x_bin_att_vel, y_bin_att_vel = self._get_cell_indexes(players_att_coo[:, 0], players_att_coo[:, 1])
-        for i in range(len(players_ve_att_coo)):
-            if 0 <= x_bin_att_vel[i] < matrix.shape[2] and 0 <= y_bin_att_vel[i] < matrix.shape[1]:
-                matrix[12, y_bin_att_vel[i], x_bin_att_vel[i]] = players_ve_att_coo[i][0]
-                matrix[13, y_bin_att_vel[i], x_bin_att_vel[i]] = players_ve_att_coo[i][1]
-                
-        
-        # Channels 15-16: Defending team players' velocity (x and y)
-        x_bin_def_vel, y_bin_def_vel = self._get_cell_indexes(players_def_coo[:, 0], players_def_coo[:, 1])
-        for i in range(len(players_ve_att_coo)):
-            if 0 <= x_bin_att_vel[i] < matrix.shape[2] and 0 <= y_bin_att_vel[i] < matrix.shape[1]:
-                matrix[14, y_bin_def_vel[i], x_bin_def_vel[i]] = players_ve_def_coo[i][0]
-                matrix[15, y_bin_def_vel[i], x_bin_def_vel[i]] = players_ve_def_coo[i][1]
-                
-                
-        # Channel 17: Distance to event's origin location
-        x0_start, y0_start = self._get_cell_indexes(np.array([start_x]), np.array([start_y]))
-        matrix[16, :, :] = np.sqrt((xx - x0_start) ** 2 + (yy - y0_start) ** 2)
+        # Table-5 PP/PS channels (shared):
+        # 1 att loc, 2 def loc, 3 att vx, 4 att vy, 5 def vx, 6 def vy,
+        # 7 angle-to-goal, 8 sin(angle-to-ball), 9 cos(angle-to-ball),
+        # 10 sin(angle-to-carrier-velocity), 11 cos(angle-to-carrier-velocity),
+        # 12 distance-to-goal, 13 distance-to-ball.
+        matrix[6, :, :] = angle_to_goal
+        matrix[7, :, :] = sin_angle_to_ball
+        matrix[8, :, :] = cos_angle_to_ball
+        matrix[9, :, :] = sin_angle_to_carrier_velocity
+        matrix[10, :, :] = cos_angle_to_carrier_velocity
+        matrix[11, :, :] = distance_to_goal
+        matrix[12, :, :] = distance_to_ball
 
         mask = np.zeros((1, self.y_bins, self.x_bins))
         end_ball_coo = np.array([[end_x, end_y]])

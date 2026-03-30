@@ -1,4 +1,7 @@
 import os
+import sys
+from pathlib import Path
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, TensorDataset
@@ -8,8 +11,24 @@ from tqdm import tqdm
 
 from utils import ToSoccerMapTensor
 
+PASS_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(PASS_ROOT) not in sys.path:
+    sys.path.append(str(PASS_ROOT))
+
+from reward_labels import PassRewardLabeler
+
 class PFFDataset(Dataset):
-    def __init__(self, train_directory, test_directory=None, split_ratio=0.8):
+    def __init__(
+        self,
+        train_directory,
+        test_directory=None,
+        split_ratio=0.8,
+        label_mode="pass_outcome",
+        reward_event_directory="data/raw/event",
+        reward_horizon_seconds=15.0,
+        include_open_play_null=True,
+    ):
         self.train_data = []
         self.train_labels = []
         self.train_mask = []
@@ -21,6 +40,21 @@ class PFFDataset(Dataset):
         self.test_data = []
         self.test_labels = []
         self.test_mask = []
+
+        self.label_mode = label_mode
+        if self.label_mode not in {"pass_outcome", "reward"}:
+            raise ValueError("label_mode must be one of: 'pass_outcome', 'reward'.")
+
+        self.reward_labeler = None
+        if self.label_mode == "reward":
+            event_root = Path(reward_event_directory)
+            if not event_root.is_absolute():
+                event_root = (REPO_ROOT / event_root).resolve()
+            self.reward_labeler = PassRewardLabeler(
+                event_root=event_root,
+                horizon_seconds=reward_horizon_seconds,
+                include_open_play_null=include_open_play_null,
+            )
 
         self._load_data(train_directory, is_train=True)
         if test_directory:
@@ -37,6 +71,16 @@ class PFFDataset(Dataset):
                 filepath = os.path.join(directory, filename)
                 df = pd.read_csv(filepath)
                 df.dropna(subset=['pass_outcome_type'], inplace=True)
+
+                if self.label_mode == "reward" and self.reward_labeler is not None:
+                    df, label_summary = self.reward_labeler.label_pass_dataframe(
+                        df,
+                        source_filename=filename,
+                        drop_unlabeled=True,
+                    )
+                    if df.empty:
+                        continue
+
                 tensor_converter = ToSoccerMapTensor()
                 for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
                     player_id = int(row["player_id"])
@@ -65,22 +109,23 @@ class PFFDataset(Dataset):
                         "pass_outcome_type": row["pass_outcome_type"],
                         "team_id": row["team_id"],
                         "vx_carrier": df.loc[idx, 'vx_carrier'],
-                        "vy_carrier": df.loc[idx, 'vx_carrier'],
+                        "vy_carrier": df.loc[idx, 'vy_carrier'],
                         "carrier_velocity": df.loc[idx, 'carrier_velocity'],
                         "frame": df.loc[[idx]],
                     }
                     
                     # Transforma a amostra e obtém a máscara e o target
                     matrix, mask, target = tensor_converter(sample)
+                    target_value = int(row["reward_label"]) if self.label_mode == "reward" else int(target[0])
                     
                     if is_train:
                         self.train_data.append(matrix)
                         self.train_mask.append(mask)
-                        self.train_labels.append(int(target[0]))
+                        self.train_labels.append(target_value)
                     else:
                         self.test_data.append(matrix)
                         self.test_mask.append(mask)
-                        self.test_labels.append(int(target[0]))
+                        self.test_labels.append(target_value)
         
     def __len__(self):
         return len(self.train_data)
@@ -116,9 +161,9 @@ class PFFDataset(Dataset):
 
 
 if __name__ == "__main__":
-    train_directory = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Pass'
-    teste_directory = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Test_Pass'
-    dataset = PFFDataset(train_directory,teste_directory, split_ratio=0.8)
+    train_directory = 'passes'
+    # teste_directory = '/home_cerberus/disk2/diogochaves/FUTEBOL/Simplified_EPV_in_PFF_Data/data/Test_Pass'
+    dataset = PFFDataset(train_directory,test_directory=None, split_ratio=0.8)
 
     train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(dataset.get_validation_data(), batch_size=32, shuffle=False)
