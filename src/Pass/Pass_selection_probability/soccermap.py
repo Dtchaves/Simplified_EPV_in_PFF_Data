@@ -7,7 +7,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 import matplotlib.pyplot as plt
-from utils import ToSoccerMapTensor
+
+try:
+    from utils import ToSoccerMapTensor
+except ImportError:
+    from .utils import ToSoccerMapTensor
 
 
 class _FeatureExtractionLayer(nn.Module):
@@ -151,7 +155,7 @@ class SoccerMapPassSelect(nn.Module):
         self.prediction_x1 = _PredictionLayer()
         self.prediction_x2 = _PredictionLayer()
         self.prediction_x4 = _PredictionLayer()
-        
+
     def forward(self, x):
         # Feature extraction
         f_x1 = self.features_x1(x)
@@ -198,7 +202,7 @@ def pixel(surface, mask):
 
 def test_soccer_map_random():
     torch.manual_seed(42)
-    
+
     # Definindo as dimensões da entrada
     batch_size = 1
     in_channels = 19
@@ -213,7 +217,7 @@ def test_soccer_map_random():
 
     # Passando a entrada pelo modelo
     output = model(input_tensor)
-    
+
     mask = np.zeros((height, width), dtype=int)
 
     pos_x = 21

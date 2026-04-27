@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Any, Dict, List
 
 import pandas as pd
 import torch
@@ -14,9 +15,29 @@ from utils import ToSoccerMapTensor
 PASS_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(PASS_ROOT) not in sys.path:
-    sys.path.append(str(PASS_ROOT))
+    sys.path.insert(0, str(PASS_ROOT))
 
-from reward_labels import PassRewardLabeler
+try:
+    from data_utils import (
+        PP_PS_CACHE_VERSION,
+        discover_data_files,
+        load_or_build_canonical_cache,
+        load_tensor_cache,
+        save_tensor_cache,
+        build_sample_key,
+    )
+    from reward_labels import PassRewardLabeler
+except ImportError:
+    # Fallback for relative imports when package is properly structured
+    from ..data_utils import (
+        PP_PS_CACHE_VERSION,
+        discover_data_files,
+        load_or_build_canonical_cache,
+        load_tensor_cache,
+        save_tensor_cache,
+        build_sample_key,
+    )
+    from ..reward_labels import PassRewardLabeler
 
 class PFFDataset(Dataset):
     def __init__(
@@ -63,79 +84,207 @@ class PFFDataset(Dataset):
             self.train_data, self.val_data, self.train_labels, self.val_labels, self.train_mask, self.val_mask = train_test_split(
                 self.train_data, self.train_labels, self.train_mask, test_size=1-split_ratio, random_state=42
             )
-        
+
+    def _resolve_carrier_velocity(self, row: pd.Series, frame: pd.DataFrame) -> tuple[float, float, float]:
+        player_id = int(row["player_id"])
+
+        for col in frame.columns:
+            if not col.startswith("original_pId_player_"):
+                continue
+            raw_value = frame.iloc[0][col]
+            if pd.isna(raw_value) or int(raw_value) != player_id:
+                continue
+
+            suffix = col.replace("original_pId_player_", "")
+            vx_col = f"vx_player_{suffix}"
+            vy_col = f"vy_player_{suffix}"
+            vx_val = frame.iloc[0][vx_col] if vx_col in frame.columns else 0.0
+            vy_val = frame.iloc[0][vy_col] if vy_col in frame.columns else 0.0
+            vx = float(vx_val) if pd.notna(vx_val) else 0.0
+            vy = float(vy_val) if pd.notna(vy_val) else 0.0
+            return vx, vy, float(np.hypot(vx, vy))
+
+        return 0.0, 0.0, 0.0
+
+    def _append_payload(self, payload: Dict[str, Any], is_train: bool) -> None:
+        data_list = payload.get("data", [])
+        mask_list = payload.get("mask", [])
+        label_list = payload.get("labels", [])
+
+        if is_train:
+            self.train_data.extend(data_list)
+            self.train_mask.extend(mask_list)
+            self.train_labels.extend(label_list)
+        else:
+            self.test_data.extend(data_list)
+            self.test_mask.extend(mask_list)
+            self.test_labels.extend(label_list)
+
+    def _build_pass_outcome_tensor_payload(self, df: pd.DataFrame, filepath: Path) -> Dict[str, Any]:
+        tensor_converter = ToSoccerMapTensor()
+        matrices: List[torch.Tensor] = []
+        masks: List[torch.Tensor] = []
+        labels: List[int] = []
+        sample_keys: List[str] = []
+        metadata: List[Dict[str, Any]] = []
+
+        for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do {filepath.name}"):
+            frame = df.loc[[idx]].copy()
+            vx_carrier, vy_carrier, carrier_velocity = self._resolve_carrier_velocity(row, frame)
+
+            sample = {
+                "ball_x_start": row["ball_x_start"],
+                "ball_y_start": row["ball_y_start"],
+                "ball_x_end": row["ball_x_end"],
+                "ball_y_end": row["ball_y_end"],
+                "pass_outcome_type": row["pass_outcome_type"],
+                "team_id": row["team_id"],
+                "vx_carrier": vx_carrier,
+                "vy_carrier": vy_carrier,
+                "carrier_velocity": carrier_velocity,
+                "frame": frame,
+            }
+
+            matrix, mask, target = tensor_converter(sample)
+            matrices.append(matrix)
+            masks.append(mask)
+            labels.append(int(target[0]))
+            sample_keys.append(build_sample_key(row, idx))
+            metadata.append(
+                {
+                    "source_file": filepath.name,
+                    "pass_outcome_type": row["pass_outcome_type"],
+                }
+            )
+
+        return {
+            "data": matrices,
+            "mask": masks,
+            "labels": labels,
+            "sample_keys": sample_keys,
+            "metadata": metadata,
+        }
+
     def _load_data(self, directory, is_train=True):
-        print(f"Temos {len(os.listdir(directory))} amostras na pasta {'treino' if is_train else 'teste'}")
-        for filename in os.listdir(directory):
-            if filename.endswith('.csv'):
-                filepath = os.path.join(directory, filename)
-                df = pd.read_csv(filepath)
-                df.dropna(subset=['pass_outcome_type'], inplace=True)
+        # Resolve data directory - if it's just 'passes', treat as 'data/passes' from repo root
+        data_path = Path(directory)
+        if not data_path.is_absolute():
+            if directory == "passes" or directory == "data/passes":
+                data_path = REPO_ROOT / "data" / "passes"
+            else:
+                data_path = REPO_ROOT / directory
 
-                if self.label_mode == "reward" and self.reward_labeler is not None:
-                    df, label_summary = self.reward_labeler.label_pass_dataframe(
-                        df,
-                        source_filename=filename,
-                        drop_unlabeled=True,
-                    )
-                    if df.empty:
-                        continue
+        # Discover all data files (Parquet first, CSV fallback)
+        try:
+            files = discover_data_files(str(data_path), prefer_parquet=True)
+        except FileNotFoundError:
+            print(f"[WARNING] No data files found in {directory}")
+            return
 
-                tensor_converter = ToSoccerMapTensor()
-                for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
-                    player_id = int(row["player_id"])
-    
-                    # Encontrando a coluna que corresponde à condição
-                    passerPlayerColumn = [
-                        column.replace('original_pId_player_', '')
-                        for column in df.columns
-                        if 'original_pId_player' in column and player_id in df[column].values
-                    ]
-                    
-                    if passerPlayerColumn:  # Verifica se a lista não está vazia
-                        passerPlayerColumn = int(passerPlayerColumn[0])
-                        df.loc[idx, 'carrier_velocity'] = np.sqrt(
-                            df.loc[idx, f'vx_player_{passerPlayerColumn}']**2 +
-                            df.loc[idx, f'vy_player_{passerPlayerColumn}']**2
-                        )
-                        df.loc[idx, 'vx_carrier'] = df.loc[idx, f'vx_player_{passerPlayerColumn}']
-                        df.loc[idx, 'vy_carrier'] = df.loc[idx, f'vy_player_{passerPlayerColumn}']
-                        
-                    sample = {
-                        "ball_x_start": row["ball_x_start"],
-                        "ball_y_start": row["ball_y_start"],
-                        "ball_x_end": row["ball_x_end"],
-                        "ball_y_end": row["ball_y_end"],
-                        "pass_outcome_type": row["pass_outcome_type"],
-                        "team_id": row["team_id"],
-                        "vx_carrier": df.loc[idx, 'vx_carrier'],
-                        "vy_carrier": df.loc[idx, 'vy_carrier'],
-                        "carrier_velocity": df.loc[idx, 'carrier_velocity'],
-                        "frame": df.loc[[idx]],
-                    }
-                    
-                    # Transforma a amostra e obtém a máscara e o target
-                    matrix, mask, target = tensor_converter(sample)
-                    target_value = int(row["reward_label"]) if self.label_mode == "reward" else int(target[0])
-                    
-                    if is_train:
-                        self.train_data.append(matrix)
-                        self.train_mask.append(mask)
-                        self.train_labels.append(target_value)
-                    else:
-                        self.test_data.append(matrix)
-                        self.test_mask.append(mask)
-                        self.test_labels.append(target_value)
-        
+        print(f"Descobertos {len(files)} arquivos de dados para {'treino' if is_train else 'teste'}")
+
+        # Required columns that MUST exist prior to event merge
+        required_cols = [
+            'game_id', 'game_event_id', 'possession_event_id', 'player_id',
+            'ball_x_start', 'ball_y_start',
+            'ball_x_end', 'ball_y_end', 'team_id'
+        ]
+
+        cache_dependencies = {
+            "label_mode": self.label_mode,
+            "tensor_family": "pp_ps",
+            "spatial_dim": [68, 104],
+        }
+
+        for filepath in files:
+            try:
+                df, canonical_summary = load_or_build_canonical_cache(
+                    source_path=filepath,
+                    required_columns=required_cols,
+                    source_filename=filepath.name,
+                    event_root="data/raw/event",
+                )
+            except Exception as e:
+                print(f"[ERROR] Failed to load {filepath.name}: {e}")
+                continue
+
+            df.dropna(subset=['pass_outcome_type'], inplace=True)
+            if df.empty:
+                continue
+
+            if self.label_mode == "pass_outcome":
+                cached_payload = load_tensor_cache(
+                    source_path=filepath,
+                    cache_family="pp_ps",
+                    artifact_stem="pass_outcome_tensors",
+                    cache_version=PP_PS_CACHE_VERSION,
+                    dependencies=cache_dependencies,
+                )
+                if cached_payload is not None:
+                    self._append_payload(cached_payload, is_train=is_train)
+                    continue
+
+            if self.label_mode == "reward" and self.reward_labeler is not None:
+                df, label_summary = self.reward_labeler.label_pass_dataframe(
+                    df,
+                    source_filename=filepath.name,
+                    drop_unlabeled=True,
+                )
+                if df.empty:
+                    continue
+
+            if self.label_mode == "pass_outcome":
+                payload = self._build_pass_outcome_tensor_payload(df, filepath)
+                payload = save_tensor_cache(
+                    source_path=filepath,
+                    cache_family="pp_ps",
+                    artifact_stem="pass_outcome_tensors",
+                    cache_version=PP_PS_CACHE_VERSION,
+                    payload=payload,
+                    dependencies=cache_dependencies,
+                )
+                self._append_payload(payload, is_train=is_train)
+                continue
+
+            tensor_converter = ToSoccerMapTensor()
+            for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do {filepath.name}"):
+                frame = df.loc[[idx]].copy()
+                vx_carrier, vy_carrier, carrier_velocity = self._resolve_carrier_velocity(row, frame)
+
+                sample = {
+                    "ball_x_start": row["ball_x_start"],
+                    "ball_y_start": row["ball_y_start"],
+                    "ball_x_end": row["ball_x_end"],
+                    "ball_y_end": row["ball_y_end"],
+                    "pass_outcome_type": row["pass_outcome_type"],
+                    "team_id": row["team_id"],
+                    "vx_carrier": vx_carrier,
+                    "vy_carrier": vy_carrier,
+                    "carrier_velocity": carrier_velocity,
+                    "frame": frame,
+                }
+
+                matrix, mask, target = tensor_converter(sample)
+                target_value = int(row["reward_label"]) if self.label_mode == "reward" else int(target[0])
+
+                if is_train:
+                    self.train_data.append(matrix)
+                    self.train_mask.append(mask)
+                    self.train_labels.append(target_value)
+                else:
+                    self.test_data.append(matrix)
+                    self.test_mask.append(mask)
+                    self.test_labels.append(target_value)
+
     def __len__(self):
         return len(self.train_data)
-    
+
     def __getitem__(self, idx):
         matrix = self.train_data[idx]
         mask = self.train_mask[idx]
         target = self.train_labels[idx]
         return matrix, mask, target
-    
+
     def get_validation_data(self):
         val_data = torch.stack(self.val_data)
         val_labels = torch.tensor(self.val_labels, dtype=torch.long)
@@ -146,8 +295,14 @@ class PFFDataset(Dataset):
             val_labels
         )
         return val_dataset
-    
+
     def get_test_data(self):
+        # When no explicit test_directory is provided, reuse validation split for test-time checks.
+        if len(self.test_data) == 0:
+            if len(self.val_data) > 0:
+                return self.get_validation_data()
+            raise ValueError("No test samples available. Provide test_directory or ensure data is loaded.")
+
         test_data = torch.stack(self.test_data)
         test_labels = torch.tensor(self.test_labels, dtype=torch.long)
         test_mask = torch.stack(self.test_mask)

@@ -14,19 +14,28 @@ from torch.utils.data import DataLoader
 from dataloader import PFFDataset
 
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+
+def _resolve_repo_path(path):
+    if path is None or os.path.isabs(path):
+        return path
+    return os.path.join(PROJECT_ROOT, path)
+
+
 
 
 class TestPassSucess:
     def __init__(self, model_path, train_directory, test_directory, dataset, model_name, path_metric, path_heatmap, device):
-        self.model_path = model_path
-        self.model = torch.load(self.model_path)
+        self.model_path = _resolve_repo_path(model_path)
+        self.model = torch.load(self.model_path, weights_only=False)
         self.train_directory = train_directory
         self.test_directory = test_directory
         self.dataset = dataset
         self.test_loader = DataLoader(self.dataset.get_test_data(), batch_size=32, shuffle=False)
         self.model_name = model_name
-        self.path_metric = path_metric
-        self.path_heatmap = path_heatmap
+        self.path_metric = _resolve_repo_path(path_metric)
+        self.path_heatmap = _resolve_repo_path(path_heatmap)
         self.device = device
 
     def metric(self, y_true, y_pred):
@@ -53,6 +62,7 @@ class TestPassSucess:
         for key, cell in table.get_celld().items():
             if key[0] == 0:
                 cell.set_text_props(weight='bold')
+        os.makedirs(self.path_metric, exist_ok=True)
         name = f"Metrics_" + self.model_name
         save_path = os.path.join(self.path_metric, self.model_name)
         plt.savefig(save_path)
@@ -84,10 +94,10 @@ class TestPassSucess:
 
     def plot_random_heatmap(self):
         # Selecionar um índice aleatório de um lote
-        random_index = random.randint(0, len(self.test_loader.dataset) - 1)
+        random_index = random.randint(0, min(len(self.test_loader.dataset) - 1, 4562))
 
         with torch.no_grad():
-            matriz, mask, target = self.test_loader.dataset[4562]
+            matriz, mask, target = self.test_loader.dataset[random_index]
 
             plt.figure(figsize=(10, 8), dpi=100)  # Ajustar o tamanho e DPI da figura
             plt.imshow(matriz[2], cmap='jet', interpolation='gaussian', aspect='auto')
@@ -95,8 +105,10 @@ class TestPassSucess:
             plt.title("Heatmap Aleatório da saída do SoccerMap da bola")
             plt.xlabel("Largura")
             plt.ylabel("Altura")
+            os.makedirs(self.path_heatmap, exist_ok=True)
             save_path = os.path.join(self.path_heatmap, f"{self.model_name}_bola.png")
             plt.savefig(save_path)
+            plt.close()
 
             plt.figure(figsize=(10, 8), dpi=100)  # Ajustar o tamanho e DPI da figura
             plt.imshow(matriz[0], cmap='jet', interpolation='gaussian', aspect='auto')
@@ -115,14 +127,14 @@ class TestPassSucess:
             plt.ylabel("Altura")
             save_path = os.path.join(self.path_heatmap, f"{self.model_name}_jogadoresd.png")
             plt.savefig(save_path)
-            
+
             matriz = matriz.unsqueeze(0).to(self.device)
             surface = self.model(matriz)
 
             output_np = surface[0].cpu().detach().numpy().squeeze()
             scaler = QuantileTransformer(output_distribution='uniform')
             #output_np = scaler.fit_transform(output_np)
-            
+
             plt.figure(figsize=(10, 8), dpi=100)  # Ajustar o tamanho e DPI da figura
             plt.imshow(output_np, cmap='jet', interpolation='gaussian', aspect='auto')
             plt.colorbar()
@@ -147,8 +159,8 @@ class TestConfig:
     test_directory = None
     dataset: PFFDataset = PFFDataset(train_directory, test_directory, split_ratio=0.8)
     model_name: str = "Pass_success_probability"
-    path_metric: str = "/results/metrics"
-    path_heatmap: str = "/results/heatmaps"
+    path_metric: str = "results/metrics"
+    path_heatmap: str = "results/heatmaps"
     device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def Test():

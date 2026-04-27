@@ -7,8 +7,17 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataloader import PFFDataset
-from soccermap import SoccerMapPassEPVSuccess, pixel
+from .dataloader import PFFDataset
+from .soccermap import SoccerMapPassEPVSuccess, pixel
+
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+
+def _resolve_repo_path(path):
+    if os.path.isabs(path):
+        return path
+    return os.path.join(PROJECT_ROOT, path)
 
 
 class TrainerPassEPVSuccess:
@@ -25,6 +34,7 @@ class TrainerPassEPVSuccess:
         model,
         data_directory,
         batch_size,
+        pp_model_path,
     ):
         self.device = device
         self.epochs = epochs
@@ -33,10 +43,11 @@ class TrainerPassEPVSuccess:
         self.loss_func = loss_func
         self.optim_func = optim_func
         self.model_name = model_name
-        self.path_save_model = path_save_model
+        self.path_save_model = _resolve_repo_path(path_save_model)
         self.model = model
         self.data_directory = data_directory
         self.batch_size = batch_size
+        self.pp_model_path = _resolve_repo_path(pp_model_path)
 
     def save_model(self):
         os.makedirs(self.path_save_model, exist_ok=True)
@@ -44,7 +55,12 @@ class TrainerPassEPVSuccess:
         torch.save(self.model, save_path)
 
     def run(self):
-        dataset = PFFDataset(self.data_directory, split_ratio=0.8, pass_outcome_filter="C")
+        dataset = PFFDataset(
+            self.data_directory,
+            split_ratio=0.8,
+            pass_outcome_filter="C",
+            pp_model_path=self.pp_model_path,
+        )
         if len(dataset) == 0:
             raise RuntimeError("No PE-success training rows available after filtering.")
 
@@ -115,6 +131,7 @@ class TrainerConfig:
     model: SoccerMapPassEPVSuccess = field(default_factory=lambda: SoccerMapPassEPVSuccess(in_channels=16))
     data_directory: str = "passes"
     batch_size: int = 32
+    pp_model_path: str = "results/models/Pass_success_probability.pt"
 
 
 def Train():

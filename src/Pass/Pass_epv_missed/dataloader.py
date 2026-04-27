@@ -12,14 +12,36 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from tqdm import tqdm
 
-from utils import ToSoccerMapTensor
+from .utils import ToSoccerMapTensor
 
 PASS_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(PASS_ROOT) not in sys.path:
-    sys.path.append(str(PASS_ROOT))
+    sys.path.insert(0, str(PASS_ROOT))
 
-from reward_labels import PassRewardLabeler
+try:
+    from data_utils import (
+        EPV_CACHE_VERSION,
+        build_sample_key,
+        discover_data_files,
+        get_optional_fingerprint,
+        load_or_build_canonical_cache,
+        load_tensor_cache,
+        save_tensor_cache,
+    )
+    from reward_labels import PassRewardLabeler
+except ImportError:
+    # Fallback for relative imports when package is properly structured
+    from ..data_utils import (
+        EPV_CACHE_VERSION,
+        build_sample_key,
+        discover_data_files,
+        get_optional_fingerprint,
+        load_or_build_canonical_cache,
+        load_tensor_cache,
+        save_tensor_cache,
+    )
+    from ..reward_labels import PassRewardLabeler
 
 
 MISSED_PASS_OUTCOMES = {"D", "B", "O", "S", "G", "I"}
@@ -69,6 +91,7 @@ class PFFDataset(Dataset):
             pp_path_obj = Path(pp_model_path)
             if not pp_path_obj.is_absolute():
                 pp_path_obj = (REPO_ROOT / pp_path_obj).resolve()
+        self.pp_model_path = str(pp_path_obj) if pp_path_obj is not None else None
         self.tensor_converter = ToSoccerMapTensor(pp_model_path=pp_path_obj)
 
         self._load_data(train_directory, is_train=True)
@@ -95,6 +118,72 @@ class PFFDataset(Dataset):
                     random_state=42,
                 )
 
+
+    def _append_payload(self, payload: dict, is_train: bool) -> None:
+        data_list = payload.get("data", [])
+        mask_list = payload.get("mask", [])
+        label_list = payload.get("labels", [])
+        metadata_list = payload.get("metadata", [])
+
+        if is_train:
+            self.train_data.extend(data_list)
+            self.train_mask.extend(mask_list)
+            self.train_labels.extend(label_list)
+            self.train_metadata.extend(metadata_list)
+        else:
+            self.test_data.extend(data_list)
+            self.test_mask.extend(mask_list)
+            self.test_labels.extend(label_list)
+            self.test_metadata.extend(metadata_list)
+
+    def _build_tensor_payload(self, df: pd.DataFrame, filepath: Path) -> dict:
+        matrices = []
+        masks = []
+        labels = []
+        sample_keys = []
+        metadata = []
+
+        for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do {filepath.name}"):
+            frame = df.loc[[idx]].copy()
+            vx_carrier, vy_carrier = self._resolve_carrier_velocity(row, frame)
+
+            sample = {
+                "ball_x_start": float(row["ball_x_start"]),
+                "ball_y_start": float(row["ball_y_start"]),
+                "ball_x_end": float(row["ball_x_end"]),
+                "ball_y_end": float(row["ball_y_end"]),
+                "pass_outcome_type": row["pass_outcome_type"],
+                "team_id": int(row["team_id"]),
+                "vx_carrier": vx_carrier,
+                "vy_carrier": vy_carrier,
+                "frame": frame,
+            }
+
+            matrix, mask, _ = self.tensor_converter(sample)
+            target_value = float(int(row["reward_label"]))
+
+            matrices.append(matrix)
+            masks.append(mask)
+            labels.append(target_value)
+            sample_keys.append(build_sample_key(row, idx))
+            metadata.append(
+                {
+                    "source_file": filepath.name,
+                    "pass_outcome_type": row["pass_outcome_type"],
+                    "reward_label": target_value,
+                    "reward_status": row.get("reward_status", None),
+                    "reward_join_strategy": row.get("reward_join_strategy", None),
+                }
+            )
+
+        return {
+            "data": matrices,
+            "mask": masks,
+            "labels": labels,
+            "sample_keys": sample_keys,
+            "metadata": metadata,
+        }
+
     def _resolve_carrier_velocity(self, row: pd.Series, frame: pd.DataFrame) -> tuple[float, float]:
         player_id = int(row["player_id"])
 
@@ -119,14 +208,51 @@ class PFFDataset(Dataset):
         return 0.0, 0.0
 
     def _load_data(self, directory, is_train=True):
-        print(f"Temos {len(os.listdir(directory))} amostras na pasta {'treino' if is_train else 'teste'}")
+        # Resolve data directory - if it's just 'passes', treat as 'data/passes' from repo root
+        data_path = Path(directory)
+        if not data_path.is_absolute():
+            if directory == "passes" or directory == "data/passes":
+                data_path = REPO_ROOT / "data" / "passes"
+            else:
+                data_path = REPO_ROOT / directory
 
-        for filename in os.listdir(directory):
-            if not filename.endswith(".csv"):
+        # Discover all data files (Parquet first, CSV fallback)
+        try:
+            files = discover_data_files(str(data_path), prefer_parquet=True)
+        except FileNotFoundError:
+            print(f"[WARNING] No data files found in {directory}")
+            return
+
+        print(f"Descobertos {len(files)} arquivos de dados para {'treino' if is_train else 'teste'}")
+
+        # Required columns that MUST exist prior to event merge
+        required_cols = [
+            'game_id', 'game_event_id', 'possession_event_id', 'player_id',
+            'ball_x_start', 'ball_y_start',
+            'ball_x_end', 'ball_y_end', 'team_id'
+        ]
+
+        cache_dependencies = {
+            "pass_outcome_filter": self.pass_outcome_filter,
+            "tensor_family": "epv",
+            "spatial_dim": [68, 104],
+            "reward_horizon_seconds": self.reward_labeler.horizon_seconds,
+            "include_open_play_null": self.reward_labeler.include_open_play_null,
+            "pp_model_fingerprint": get_optional_fingerprint(self.pp_model_path),
+        }
+
+        for filepath in files:
+            try:
+                df, canonical_summary = load_or_build_canonical_cache(
+                    source_path=filepath,
+                    required_columns=required_cols,
+                    source_filename=filepath.name,
+                    event_root="data/raw/event",
+                )
+            except Exception as e:
+                print(f"[ERROR] Failed to load {filepath.name}: {e}")
                 continue
 
-            filepath = os.path.join(directory, filename)
-            df = pd.read_csv(filepath)
             df = df[df["pass_outcome_type"].notna()].copy()
             if self.pass_outcome_filter == "MISSED":
                 df = df[df["pass_outcome_type"].isin(MISSED_PASS_OUTCOMES)].copy()
@@ -137,49 +263,33 @@ class PFFDataset(Dataset):
 
             df, _ = self.reward_labeler.label_pass_dataframe(
                 df,
-                source_filename=filename,
+                source_filename=filepath.name,
                 drop_unlabeled=True,
             )
             if df.empty:
                 continue
 
-            for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do csv {filename}"):
-                frame = df.loc[[idx]].copy()
-                vx_carrier, vy_carrier = self._resolve_carrier_velocity(row, frame)
+            cached_payload = load_tensor_cache(
+                source_path=filepath,
+                cache_family="epv",
+                artifact_stem="missed_reward_tensors",
+                cache_version=EPV_CACHE_VERSION,
+                dependencies=cache_dependencies,
+            )
+            if cached_payload is not None:
+                self._append_payload(cached_payload, is_train=is_train)
+                continue
 
-                sample = {
-                    "ball_x_start": float(row["ball_x_start"]),
-                    "ball_y_start": float(row["ball_y_start"]),
-                    "ball_x_end": float(row["ball_x_end"]),
-                    "ball_y_end": float(row["ball_y_end"]),
-                    "pass_outcome_type": row["pass_outcome_type"],
-                    "team_id": int(row["team_id"]),
-                    "vx_carrier": vx_carrier,
-                    "vy_carrier": vy_carrier,
-                    "frame": frame,
-                }
-
-                matrix, mask, _ = self.tensor_converter(sample)
-                target_value = float(int(row["reward_label"]))
-
-                metadata_row = {
-                    "source_file": filename,
-                    "pass_outcome_type": row["pass_outcome_type"],
-                    "reward_label": target_value,
-                    "reward_status": row.get("reward_status", None),
-                    "reward_join_strategy": row.get("reward_join_strategy", None),
-                }
-
-                if is_train:
-                    self.train_data.append(matrix)
-                    self.train_mask.append(mask)
-                    self.train_labels.append(target_value)
-                    self.train_metadata.append(metadata_row)
-                else:
-                    self.test_data.append(matrix)
-                    self.test_mask.append(mask)
-                    self.test_labels.append(target_value)
-                    self.test_metadata.append(metadata_row)
+            payload = self._build_tensor_payload(df, filepath)
+            payload = save_tensor_cache(
+                source_path=filepath,
+                cache_family="epv",
+                artifact_stem="missed_reward_tensors",
+                cache_version=EPV_CACHE_VERSION,
+                payload=payload,
+                dependencies=cache_dependencies,
+            )
+            self._append_payload(payload, is_train=is_train)
 
     def __len__(self):
         return len(self.train_data)
@@ -194,6 +304,12 @@ class PFFDataset(Dataset):
         return TensorDataset(val_data, val_mask, val_labels)
 
     def get_test_data(self):
+        # When no explicit test_directory is provided, reuse validation split for test-time checks.
+        if len(self.test_data) == 0:
+            if len(self.val_data) > 0:
+                return self.get_validation_data()
+            raise ValueError("No test samples available. Provide test_directory or ensure data is loaded.")
+
         test_data = torch.stack(self.test_data)
         test_labels = torch.tensor(self.test_labels, dtype=torch.float32)
         test_mask = torch.stack(self.test_mask)

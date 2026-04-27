@@ -45,7 +45,7 @@ class ToSoccerMapTensor:
         model: Optional[torch.nn.Module] = None
         if pp_model_path is not None and pp_model_path.exists():
             try:
-                loaded = torch.load(pp_model_path, map_location="cpu")
+                loaded = torch.load(pp_model_path, map_location="cpu", weights_only=False)
                 if isinstance(loaded, torch.nn.Module):
                     model = loaded
             except Exception:
