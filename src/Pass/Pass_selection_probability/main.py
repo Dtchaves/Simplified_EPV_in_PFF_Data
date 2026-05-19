@@ -3,8 +3,8 @@ from pathlib import Path
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from Pass.Pass_epv_missed.trainer import Train
-    from Pass.Pass_epv_missed.test import Test
+    from Pass.Pass_selection_probability.trainer import Train
+    from Pass.Pass_selection_probability.test import Test
 else:
     from .trainer import Train
     from .test import Test

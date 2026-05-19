@@ -1,6 +1,13 @@
 import sys
-from .trainer import Train
-from .test import Test
+from pathlib import Path
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from Pass.Pass_epv_success.trainer import Train
+    from Pass.Pass_epv_success.test import Test
+else:
+    from .trainer import Train
+    from .test import Test
 
 
 if __name__ == "__main__":

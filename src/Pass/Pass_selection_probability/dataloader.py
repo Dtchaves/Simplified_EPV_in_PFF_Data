@@ -169,18 +169,31 @@ class PFFDataset(Dataset):
         }
 
     def _load_data(self, directory, is_train=True):
-        # Resolve data directory - if it's just 'passes', treat as 'data/passes' from repo root
+        # Resolve data directory - normalize to 'data/passes' from repo root
         data_path = Path(directory)
         if not data_path.is_absolute():
-            if directory == "passes" or directory == "data/passes":
+            # Handle various input formats
+            if directory in ["passes", "data/passes", "./passes", "./data/passes"]:
                 data_path = REPO_ROOT / "data" / "passes"
-            else:
+            elif directory.startswith("data/"):
+                # If path already starts with 'data/', it's relative from REPO_ROOT
                 data_path = REPO_ROOT / directory
+            else:
+                # Otherwise, treat as relative from REPO_ROOT
+                data_path = REPO_ROOT / directory
+            data_path = data_path.resolve()
+        
+        # Verify directory exists
+        if not data_path.exists():
+            print(f"[WARNING] Data directory does not exist: {data_path}")
+            return
 
         # Discover all data files (Parquet first, CSV fallback)
         try:
             files = discover_data_files(str(data_path), prefer_parquet=True)
         except FileNotFoundError:
+            print(f"[WARNING] No data files found in {data_path}")
+            return
             print(f"[WARNING] No data files found in {directory}")
             return
 

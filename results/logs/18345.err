@@ -1,0 +1,19 @@
+ERROR: Unable to locate a modulefile for 'python3.12.1'
+Traceback (most recent call last):
+  File "/sonic_home/diogochaves/CausalEPV/src/Pass/Pass_epv_success/main.py", line 2, in <module>
+    from .trainer import Train
+ImportError: attempted relative import with no known parent package
+Traceback (most recent call last):
+  File "/sonic_home/diogochaves/CausalEPV/src/Pass/Pass_epv_missed/main.py", line 2, in <module>
+    from .trainer import Train
+ImportError: attempted relative import with no known parent package
+Traceback (most recent call last):
+  File "/sonic_home/diogochaves/CausalEPV/src/Pass/Pass_selection_probability/main.py", line 2, in <module>
+    from .trainer import Train
+ImportError: attempted relative import with no known parent package
+Traceback (most recent call last):
+  File "/sonic_home/diogochaves/CausalEPV/src/Pass/Pass_sucess_probability/main.py", line 1, in <module>
+    from test import Test
+  File "/sonic_home/diogochaves/CausalEPV/src/Pass/Pass_sucess_probability/test.py", line 1, in <module>
+    import matplotlib.pyplot as plt
+ModuleNotFoundError: No module named 'matplotlib'

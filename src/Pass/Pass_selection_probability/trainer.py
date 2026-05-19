@@ -169,7 +169,7 @@ class TrainerConfig:
     path_save_loss: str = 'results/loss'
 
     model: SoccerMapPassSelect =  field(default_factory=lambda:SoccerMapPassSelect(in_channels=13))
-    data_directory:str = 'passes'
+    data_directory:str = 'data/passes'
 
 def Train():
     logging.basicConfig(level=logging.INFO)

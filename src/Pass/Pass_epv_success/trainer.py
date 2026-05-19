@@ -129,7 +129,7 @@ class TrainerConfig:
     model_name: str = "Pass_epv_success"
     path_save_model: str = "results/models/pass_epv_success"
     model: SoccerMapPassEPVSuccess = field(default_factory=lambda: SoccerMapPassEPVSuccess(in_channels=16))
-    data_directory: str = "passes"
+    data_directory: str = "data/passes"  # Changed from 'passes' to 'data/passes' for clarity
     batch_size: int = 32
     pp_model_path: str = "results/models/Pass_success_probability.pt"
 

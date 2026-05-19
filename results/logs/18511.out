@@ -1,0 +1,21 @@
+========== Iniciando execução dos modelos ==========
+
+Executando: src/Pass/Pass_epv_success/main.py
+Descobertos 26 arquivos de dados para treino
+✓ src/Pass/Pass_epv_success/main.py completado com sucesso
+
+Executando: src/Pass/Pass_epv_missed/main.py
+Descobertos 26 arquivos de dados para treino
+✓ src/Pass/Pass_epv_missed/main.py completado com sucesso
+
+Executando: src/Pass/Pass_selection_probability/main.py
+Descobertos 26 arquivos de dados para treino
+Descobertos 26 arquivos de dados para treino
+✓ src/Pass/Pass_selection_probability/main.py completado com sucesso
+
+Executando: src/Pass/Pass_sucess_probability/main.py
+Descobertos 26 arquivos de dados para treino
+Descobertos 26 arquivos de dados para treino
+✗ ERRO ao executar src/Pass/Pass_sucess_probability/main.py
+
+========== Execução finalizada ==========
