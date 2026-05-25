@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from data_utils import discover_pass_sources, load_or_build_canonical_pass_cache
 from reward_labels import PassRewardLabeler
 
 matplotlib.use("Agg")
@@ -22,6 +23,17 @@ PE_SUCCESS_DIR = ROOT / "src/Pass/Pass_epv_success"
 PE_MISSED_DIR = ROOT / "src/Pass/Pass_epv_missed"
 
 MISSED_PASS_OUTCOMES = {"D", "B", "O", "S", "G", "I"}
+REQUIRED_COLUMNS = [
+    "game_id",
+    "game_event_id",
+    "possession_event_id",
+    "player_id",
+    "ball_x_start",
+    "ball_y_start",
+    "ball_x_end",
+    "ball_y_end",
+    "team_id",
+]
 
 
 def _load_module(name: str, path: Path):
@@ -68,27 +80,36 @@ def _collect_labeled_samples(
     max_success_samples: int,
     max_missed_samples: int,
 ) -> List[Dict]:
-    pass_files = sorted((ROOT / "passes").glob("final_pass_track_*.csv"))
-    if not pass_files:
-        raise FileNotFoundError("No pass CSV files found under 'passes/'.")
+    sources = discover_pass_sources("data/passes", source_format="auto")
+    if not sources:
+        raise FileNotFoundError("No canonical pass sources found under data/passes.")
 
     samples: List[Dict] = []
     success_count = 0
     missed_count = 0
 
-    for pass_file in pass_files:
+    for source in sources:
         if success_count >= max_success_samples and missed_count >= max_missed_samples:
             break
 
-        source_df = pd.read_csv(pass_file)
+        source_path = Path(source["source_path"])
+        source_df, _ = load_or_build_canonical_pass_cache(
+            source=source,
+            required_columns=REQUIRED_COLUMNS,
+            source_filename=source.get("source_name"),
+            event_root="data/raw/event",
+        )
         source_df = source_df[source_df["pass_outcome_type"].notna()].copy()
         if source_df.empty:
             continue
 
         labeled_df, _ = labeler.label_pass_dataframe(
             source_df,
-            source_filename=pass_file.name,
+            source_filename=source.get("source_name") or source_path.name,
             drop_unlabeled=True,
+            source_kind=str(source.get("source_kind", "legacy_wide")),
+            processed_events_path=source.get("events_path"),
+            processed_tracking_path=source.get("tracking_path"),
         )
         if labeled_df.empty:
             continue
@@ -115,7 +136,7 @@ def _collect_labeled_samples(
             samples.append(
                 {
                     "sample_group": target_group,
-                    "source_file": pass_file.name,
+                    "source_file": source.get("source_name") or source_path.name,
                     "row_index": int(idx),
                     "reward_label": int(row["reward_label"]),
                     "reward_status": str(row.get("reward_status", "")),

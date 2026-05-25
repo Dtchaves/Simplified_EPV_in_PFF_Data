@@ -10,7 +10,10 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from tqdm import tqdm
 
-from utils import ToSoccerMapTensor
+try:
+    from utils import ToSoccerMapTensor
+except ImportError:
+    from .utils import ToSoccerMapTensor
 
 PASS_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -20,8 +23,9 @@ if str(PASS_ROOT) not in sys.path:
 try:
     from data_utils import (
         PP_PS_CACHE_VERSION,
-        discover_data_files,
-        load_or_build_canonical_cache,
+        discover_pass_sources,
+        split_sources_by_mode,
+        load_or_build_canonical_pass_cache,
         load_tensor_cache,
         save_tensor_cache,
         build_sample_key,
@@ -31,8 +35,9 @@ except ImportError:
     # Fallback for relative imports when package is properly structured
     from ..data_utils import (
         PP_PS_CACHE_VERSION,
-        discover_data_files,
-        load_or_build_canonical_cache,
+        discover_pass_sources,
+        split_sources_by_mode,
+        load_or_build_canonical_pass_cache,
         load_tensor_cache,
         save_tensor_cache,
         build_sample_key,
@@ -49,6 +54,9 @@ class PFFDataset(Dataset):
         reward_event_directory="data/raw/event",
         reward_horizon_seconds=15.0,
         include_open_play_null=True,
+        split_mode="row",
+        split_manifest_path=None,
+        split_seed=42,
     ):
         self.train_data = []
         self.train_labels = []
@@ -63,6 +71,9 @@ class PFFDataset(Dataset):
         self.test_mask = []
 
         self.label_mode = label_mode
+        self.split_mode = str(split_mode).strip().lower()
+        self.split_manifest_path = split_manifest_path
+        self.split_seed = int(split_seed)
         if self.label_mode not in {"pass_outcome", "reward"}:
             raise ValueError("label_mode must be one of: 'pass_outcome', 'reward'.")
 
@@ -77,13 +88,49 @@ class PFFDataset(Dataset):
                 include_open_play_null=include_open_play_null,
             )
 
-        self._load_data(train_directory, is_train=True)
         if test_directory:
+            self._load_data(train_directory, is_train=True)
             self._load_data(test_directory, is_train=False)
         else:
-            self.train_data, self.val_data, self.train_labels, self.val_labels, self.train_mask, self.val_mask = train_test_split(
-                self.train_data, self.train_labels, self.train_mask, test_size=1-split_ratio, random_state=42
-            )
+            if self.split_mode == "match":
+                sources = self._discover_sources(train_directory)
+                train_sources, val_sources, _ = split_sources_by_mode(
+                    sources,
+                    split_ratio=split_ratio,
+                    split_mode="match",
+                    split_seed=self.split_seed,
+                    split_manifest_path=self.split_manifest_path,
+                )
+                self._load_data(train_directory, is_train=True, sources=train_sources)
+                self._load_data(train_directory, is_train=False, sources=val_sources)
+
+                self.val_data = list(self.test_data)
+                self.val_labels = list(self.test_labels)
+                self.val_mask = list(self.test_mask)
+                self.test_data = []
+                self.test_labels = []
+                self.test_mask = []
+            else:
+                self._load_data(train_directory, is_train=True)
+                self.train_data, self.val_data, self.train_labels, self.val_labels, self.train_mask, self.val_mask = train_test_split(
+                    self.train_data, self.train_labels, self.train_mask, test_size=1-split_ratio, random_state=42
+                )
+
+    def _discover_sources(self, directory):
+        data_path = Path(directory)
+        if not data_path.is_absolute():
+            if directory in ["passes", "data/passes", "./passes", "./data/passes"]:
+                data_path = REPO_ROOT / "data" / "passes"
+            elif str(directory).startswith("data/"):
+                data_path = REPO_ROOT / directory
+            else:
+                data_path = REPO_ROOT / directory
+            data_path = data_path.resolve()
+
+        if not data_path.exists():
+            raise FileNotFoundError(f"Data directory does not exist: {data_path}")
+
+        return discover_pass_sources(str(data_path), source_format="auto", prefer_parquet=True)
 
     def _resolve_carrier_velocity(self, row: pd.Series, frame: pd.DataFrame) -> tuple[float, float, float]:
         player_id = int(row["player_id"])
@@ -165,36 +212,15 @@ class PFFDataset(Dataset):
             "metadata": metadata,
         }
 
-    def _load_data(self, directory, is_train=True):
-        # Resolve data directory - normalize to 'data/passes' from repo root
-        data_path = Path(directory)
-        if not data_path.is_absolute():
-            # Handle various input formats
-            if directory in ["passes", "data/passes", "./passes", "./data/passes"]:
-                data_path = REPO_ROOT / "data" / "passes"
-            elif directory.startswith("data/"):
-                # If path already starts with 'data/', it's relative from REPO_ROOT
-                data_path = REPO_ROOT / directory
-            else:
-                # Otherwise, treat as relative from REPO_ROOT
-                data_path = REPO_ROOT / directory
-            data_path = data_path.resolve()
-        
-        # Verify directory exists
-        if not data_path.exists():
-            print(f"[WARNING] Data directory does not exist: {data_path}")
-            return
+    def _load_data(self, directory, is_train=True, sources=None):
+        if sources is None:
+            try:
+                sources = self._discover_sources(directory)
+            except FileNotFoundError as exc:
+                print(f"[WARNING] {exc}")
+                return
 
-        # Discover all data files (Parquet first, CSV fallback)
-        try:
-            files = discover_data_files(str(data_path), prefer_parquet=True)
-        except FileNotFoundError:
-            print(f"[WARNING] No data files found in {data_path}")
-            return
-            print(f"[WARNING] No data files found in {directory}")
-            return
-
-        print(f"Descobertos {len(files)} arquivos de dados para {'treino' if is_train else 'teste'}")
+        print(f"Descobertos {len(sources)} fontes de dados para {'treino' if is_train else 'teste'}")
 
         # Required columns that MUST exist prior to event merge
         required_cols = [
@@ -209,16 +235,18 @@ class PFFDataset(Dataset):
             "spatial_dim": [68, 104],
         }
 
-        for filepath in files:
+        for source in sources:
+            source_path = Path(source["source_path"])
+            source_name = source.get("source_name", source_path.name)
             try:
-                df, canonical_summary = load_or_build_canonical_cache(
-                    source_path=filepath,
+                df, canonical_summary = load_or_build_canonical_pass_cache(
+                    source=source,
                     required_columns=required_cols,
-                    source_filename=filepath.name,
+                    source_filename=source_name,
                     event_root="data/raw/event",
                 )
             except Exception as e:
-                print(f"[ERROR] Failed to load {filepath.name}: {e}")
+                print(f"[ERROR] Failed to load {source_name}: {e}")
                 continue
 
             df.dropna(subset=['pass_outcome_type'], inplace=True)
@@ -227,7 +255,7 @@ class PFFDataset(Dataset):
 
             if self.label_mode == "pass_outcome":
                 cached_payload = load_tensor_cache(
-                    source_path=filepath,
+                    source_path=source_path,
                     cache_family="pp_ps",
                     artifact_stem="pass_outcome_tensors",
                     cache_version=PP_PS_CACHE_VERSION,
@@ -240,16 +268,19 @@ class PFFDataset(Dataset):
             if self.label_mode == "reward" and self.reward_labeler is not None:
                 df, label_summary = self.reward_labeler.label_pass_dataframe(
                     df,
-                    source_filename=filepath.name,
+                    source_filename=source_name,
                     drop_unlabeled=True,
+                    source_kind=str(source.get("source_kind", "legacy_wide")),
+                    processed_events_path=source.get("events_path"),
+                    processed_tracking_path=source.get("tracking_path"),
                 )
                 if df.empty:
                     continue
 
             if self.label_mode == "pass_outcome":
-                payload = self._build_pass_outcome_tensor_payload(df, filepath)
+                payload = self._build_pass_outcome_tensor_payload(df, source_path)
                 payload = save_tensor_cache(
-                    source_path=filepath,
+                    source_path=source_path,
                     cache_family="pp_ps",
                     artifact_stem="pass_outcome_tensors",
                     cache_version=PP_PS_CACHE_VERSION,
@@ -260,7 +291,7 @@ class PFFDataset(Dataset):
                 continue
 
             tensor_converter = ToSoccerMapTensor()
-            for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do {filepath.name}"):
+            for idx, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Processando amostras do {source_name}"):
                 frame = df.loc[[idx]].copy()
                 vx_carrier, vy_carrier, carrier_velocity = self._resolve_carrier_velocity(row, frame)
 

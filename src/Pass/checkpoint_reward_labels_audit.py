@@ -7,10 +7,22 @@ from typing import Dict, List
 
 import pandas as pd
 
+from data_utils import discover_pass_sources, load_or_build_canonical_pass_cache
 from reward_labels import GameEventIndex, PassRewardLabeler
 
 
 ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_COLUMNS = [
+    "game_id",
+    "game_event_id",
+    "possession_event_id",
+    "player_id",
+    "ball_x_start",
+    "ball_y_start",
+    "ball_x_end",
+    "ball_y_end",
+    "team_id",
+]
 
 
 def _build_synthetic_pass_event(
@@ -121,9 +133,9 @@ def run_boundary_and_open_play_checks() -> None:
 def run_reward_checkpoint() -> None:
     run_boundary_and_open_play_checks()
 
-    pass_files = sorted((ROOT / "passes").glob("final_pass_track_*.csv"))
-    if not pass_files:
-        raise FileNotFoundError("No pass CSV files found under 'passes/'.")
+    sources = discover_pass_sources("data/passes", source_format="auto")
+    if not sources:
+        raise FileNotFoundError("No canonical pass sources found under data/passes.")
 
     labeler = PassRewardLabeler(
         event_root=ROOT / "data/raw/event",
@@ -137,20 +149,29 @@ def run_reward_checkpoint() -> None:
     per_file_rows: List[Dict] = []
     sample_rows: List[Dict] = []
 
-    for pass_file in pass_files:
-        source_df = pd.read_csv(pass_file)
+    for source in sources:
+        source_path = Path(source["source_path"])
+        source_df, _ = load_or_build_canonical_pass_cache(
+            source=source,
+            required_columns=REQUIRED_COLUMNS,
+            source_filename=source.get("source_name"),
+            event_root="data/raw/event",
+        )
         source_df = source_df[source_df["pass_outcome_type"].notna()].copy()
 
         labeled_df, summary = labeler.label_pass_dataframe(
             source_df,
-            source_filename=pass_file.name,
+            source_filename=source.get("source_name") or source_path.name,
             drop_unlabeled=False,
+            source_kind=str(source.get("source_kind", "legacy_wide")),
+            processed_events_path=source.get("events_path"),
+            processed_tracking_path=source.get("tracking_path"),
         )
 
         valid_labels = labeled_df["reward_label"].dropna().astype(int)
         unique_values = set(valid_labels.unique().tolist())
         assert unique_values.issubset({-1, 0, 1}), (
-            f"Unexpected reward labels in {pass_file.name}: {sorted(unique_values)}"
+            f"Unexpected reward labels in {source.get('source_name') or source_path.name}: {sorted(unique_values)}"
         )
 
         label_counter.update(valid_labels.tolist())
@@ -159,7 +180,7 @@ def run_reward_checkpoint() -> None:
 
         per_file_rows.append(
             {
-                "file": pass_file.name,
+                "file": source.get("source_name") or source_path.name,
                 "game_id": summary["game_id"],
                 "rows_total": summary["rows_total"],
                 "rows_labeled": summary["rows_labeled"],
@@ -172,7 +193,7 @@ def run_reward_checkpoint() -> None:
 
         labeled_examples = labeled_df[labeled_df["reward_label"].notna()].head(5).copy()
         if not labeled_examples.empty:
-            labeled_examples["source_file"] = pass_file.name
+            labeled_examples["source_file"] = source.get("source_name") or source_path.name
             sample_rows.extend(
                 labeled_examples[
                     [
@@ -212,7 +233,7 @@ def run_reward_checkpoint() -> None:
         pd.DataFrame(sample_rows).to_csv(output_dir / "reward_label_examples.csv", index=False)
 
     summary_payload = {
-        "files_scanned": len(pass_files),
+        "files_scanned": len(sources),
         "rows_labeled_total": total_labeled,
         "label_counts": {str(k): int(v) for k, v in sorted(label_counter.items())},
         "status_counts": {str(k): int(v) for k, v in status_counter.items()},
@@ -228,7 +249,7 @@ def run_reward_checkpoint() -> None:
         json.dump(summary_payload, out_file, indent=2)
 
     print("REWARD_CHECKPOINT_AUDIT_OK")
-    print(f"files_scanned={len(pass_files)}")
+    print(f"files_scanned={len(sources)}")
     print(f"rows_labeled_total={total_labeled}")
     print(f"label_counts={summary_payload['label_counts']}")
     print(f"status_counts={summary_payload['status_counts']}")

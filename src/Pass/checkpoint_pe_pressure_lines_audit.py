@@ -12,6 +12,8 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from data_utils import discover_pass_sources, load_or_build_canonical_pass_cache
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,13 +51,29 @@ def _resolve_carrier_velocity(row: pd.Series, frame: pd.DataFrame) -> Tuple[floa
 
 
 def _collect_samples(max_samples: int = 5) -> List[Tuple[pd.Series, pd.DataFrame, str]]:
-    pass_files = sorted((ROOT / "passes").glob("final_pass_track_*.csv"))
-    if not pass_files:
-        raise FileNotFoundError("No pass CSV files found under 'passes/'.")
+    required_cols = [
+        "game_id",
+        "game_event_id",
+        "possession_event_id",
+        "player_id",
+        "ball_x_start",
+        "ball_y_start",
+        "ball_x_end",
+        "ball_y_end",
+        "team_id",
+    ]
 
+    sources = discover_pass_sources(ROOT / "data" / "passes", source_format="auto", prefer_parquet=True)
     samples: List[Tuple[pd.Series, pd.DataFrame, str]] = []
-    for csv_path in pass_files:
-        df = pd.read_csv(csv_path)
+    for source in sources:
+        source_name = str(source.get("source_name") or source.get("source_path") or "source")
+        df, _ = load_or_build_canonical_pass_cache(
+            source=source,
+            required_columns=required_cols,
+            source_filename=source_name,
+            event_root="data/raw/event",
+            source_format="auto",
+        )
         valid = df[df["pass_outcome_type"].notna()].copy()
         if valid.empty:
             continue
@@ -63,7 +81,7 @@ def _collect_samples(max_samples: int = 5) -> List[Tuple[pd.Series, pd.DataFrame
         pick_idx = int(len(valid) // 2)
         row = valid.iloc[pick_idx]
         frame = row.to_frame().T.copy()
-        samples.append((row, frame, csv_path.name))
+        samples.append((row, frame, source_name))
         if len(samples) >= max_samples:
             break
 

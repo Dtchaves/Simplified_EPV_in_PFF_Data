@@ -12,8 +12,9 @@ import sys
 import json
 import hashlib
 import re
+import random
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional, Union
+from typing import Any, Dict, List, Tuple, Optional, Union, Callable
 import pandas as pd
 import torch
 
@@ -28,6 +29,8 @@ DEFAULT_CACHE_ROOT = "data/processed/cache"
 CANONICAL_CACHE_VERSION = "v1"
 PP_PS_CACHE_VERSION = "v1"
 EPV_CACHE_VERSION = "v1"
+PFF_ADAPTER_VERSION = "v1"
+PFF_TRIPLET_REQUIRED_FILES = ("tracking.parquet", "events.parquet", "players.parquet")
 
 # Supported pass outcome labels used by model tensorizers
 PASS_OUTCOME_ALLOWED = {"C", "D", "B", "O", "S", "G", "I"}
@@ -35,6 +38,24 @@ NULL_EQUIVALENT_TOKENS = {"", "nan", "none", "null", "na", "n/a", "nat"}
 
 # In-process cache to avoid loading the same game JSON multiple times.
 _PASS_OUTCOME_INDEX_CACHE: Dict[Tuple[str, int], pd.DataFrame] = {}
+
+PASS_SOURCE_FORMAT_AUTO = "auto"
+PASS_SOURCE_FORMAT_LEGACY = "legacy_wide"
+PASS_SOURCE_FORMAT_PFF = "pff_match_triplets"
+
+PFF_PASS_OUTCOME_MAP = {
+    "completed": "C",
+    "intercepted": "D",
+    "blocked": "B",
+    "out_of_play": "O",
+    "stoppage": "S",
+    "shot_at_goal": "I",
+    "shot_at_own_goal": "G",
+}
+
+# Future carry/ball-drive work should reuse these generic action abstractions.
+ActionSource = Dict[str, Any]
+ActionCanonicalizer = Callable[[ActionSource], Tuple[pd.DataFrame, Dict[str, Any]]]
 
 
 def get_data_root(custom_root: Optional[str] = None) -> Path:
@@ -56,6 +77,240 @@ def get_data_root(custom_root: Optional[str] = None) -> Path:
         root = REPO_ROOT / root
 
     return root.resolve()
+
+
+def _resolve_data_path(directory: Union[str, Path]) -> Path:
+    resolved = Path(directory)
+    if not resolved.is_absolute():
+        resolved = REPO_ROOT / resolved
+    return resolved.resolve()
+
+
+def _extract_numeric_match_id(raw_value: Any) -> Optional[int]:
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, bool):
+        return None
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, float):
+        if pd.isna(raw_value):
+            return None
+        return int(raw_value)
+    text = str(raw_value)
+    matches = re.findall(r"(\d+)", text)
+    if not matches:
+        return None
+    return int(matches[-1])
+
+
+def _normalize_source_format(source_format: Optional[str]) -> str:
+    if source_format is None:
+        return PASS_SOURCE_FORMAT_AUTO
+    token = str(source_format).strip().lower()
+    allowed = {
+        PASS_SOURCE_FORMAT_AUTO,
+        PASS_SOURCE_FORMAT_LEGACY,
+        PASS_SOURCE_FORMAT_PFF,
+    }
+    if token not in allowed:
+        raise ValueError(f"Unsupported source_format: {source_format}. Allowed: {sorted(allowed)}")
+    return token
+
+
+def _discover_pff_match_triplet_sources(data_dir: Path) -> List[ActionSource]:
+    sources: List[ActionSource] = []
+    for candidate in sorted([path for path in data_dir.rglob("*") if path.is_dir()]):
+        required_paths = {name: (candidate / name) for name in PFF_TRIPLET_REQUIRED_FILES}
+        if not all(path.exists() for path in required_paths.values()):
+            continue
+
+        match_id = _extract_numeric_match_id(candidate.name)
+        if match_id is None:
+            match_id = _extract_numeric_match_id(str(candidate))
+
+        sources.append(
+            {
+                "source_kind": PASS_SOURCE_FORMAT_PFF,
+                "source_format": PASS_SOURCE_FORMAT_PFF,
+                "source_name": candidate.name,
+                "source_path": str(candidate.resolve()),
+                "match_id": match_id,
+                "tracking_path": str(required_paths["tracking.parquet"].resolve()),
+                "events_path": str(required_paths["events.parquet"].resolve()),
+                "players_path": str(required_paths["players.parquet"].resolve()),
+            }
+        )
+    return sources
+
+
+def discover_pass_sources(
+    directory: Union[str, Path],
+    source_format: str = PASS_SOURCE_FORMAT_AUTO,
+    prefer_parquet: bool = True,
+    require_extension: Optional[str] = None,
+) -> List[ActionSource]:
+    """Discover logical pass sources from legacy files or PFF match-triplet folders."""
+    normalized_format = _normalize_source_format(source_format)
+    data_dir = _resolve_data_path(directory)
+
+    if not data_dir.exists():
+        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+
+    pff_sources = _discover_pff_match_triplet_sources(data_dir)
+    pff_component_paths = {
+        str(Path(source[path_key]).resolve())
+        for source in pff_sources
+        for path_key in ("tracking_path", "events_path", "players_path")
+        if source.get(path_key) is not None
+    }
+
+    legacy_files: List[Path] = []
+    if normalized_format in {PASS_SOURCE_FORMAT_AUTO, PASS_SOURCE_FORMAT_LEGACY}:
+        try:
+            legacy_files = discover_data_files(
+                str(data_dir),
+                prefer_parquet=prefer_parquet,
+                require_extension=require_extension,
+            )
+            if pff_component_paths:
+                legacy_files = [
+                    path
+                    for path in legacy_files
+                    if str(path.resolve()) not in pff_component_paths
+                ]
+        except FileNotFoundError:
+            legacy_files = []
+
+    use_pff = normalized_format == PASS_SOURCE_FORMAT_PFF
+    if normalized_format == PASS_SOURCE_FORMAT_AUTO:
+        use_pff = len(legacy_files) == 0 and len(pff_sources) > 0
+
+    if use_pff:
+        if not pff_sources:
+            raise FileNotFoundError(
+                f"No PFF match triplet sources found in {data_dir}. "
+                f"Expected folders containing {PFF_TRIPLET_REQUIRED_FILES}."
+            )
+        return pff_sources
+
+    if not legacy_files:
+        raise FileNotFoundError(f"No legacy pass data files found in {data_dir}")
+
+    return [
+        {
+            "source_kind": PASS_SOURCE_FORMAT_LEGACY,
+            "source_format": PASS_SOURCE_FORMAT_LEGACY,
+            "source_name": path.name,
+            "source_path": str(path.resolve()),
+            "match_id": _extract_numeric_match_id(path.name),
+        }
+        for path in legacy_files
+    ]
+
+
+def split_sources_by_mode(
+    sources: List[ActionSource],
+    split_ratio: float,
+    split_mode: str = "row",
+    split_seed: int = 42,
+    split_manifest_path: Optional[Union[str, Path]] = None,
+) -> Tuple[List[ActionSource], List[ActionSource], Dict[str, Any]]:
+    """Split logical sources for train/validation while preserving backward compatibility.
+
+    row mode: keeps existing behavior by returning all sources as train and no val sources.
+    match mode: assigns all samples from each match_id to one split and can persist assignments.
+    """
+    mode = str(split_mode).strip().lower()
+    if mode not in {"row", "match"}:
+        raise ValueError("split_mode must be one of: 'row', 'match'")
+
+    if mode == "row":
+        return list(sources), [], {
+            "split_mode": "row",
+            "manifest_path": None,
+            "train_source_count": int(len(sources)),
+            "val_source_count": 0,
+        }
+
+    if not sources:
+        return [], [], {
+            "split_mode": "match",
+            "manifest_path": None,
+            "train_source_count": 0,
+            "val_source_count": 0,
+        }
+
+    manifest_path: Optional[Path] = None
+    if split_manifest_path is not None:
+        manifest_path = Path(split_manifest_path)
+        if not manifest_path.is_absolute():
+            manifest_path = (REPO_ROOT / manifest_path).resolve()
+
+    source_keys: List[str] = []
+    source_to_key: Dict[str, str] = {}
+    for source in sources:
+        match_id = source.get("match_id")
+        key = str(int(match_id)) if match_id is not None else str(source.get("source_name") or source.get("source_path"))
+        source_path = str(source.get("source_path"))
+        source_to_key[source_path] = key
+        source_keys.append(key)
+
+    unique_keys = sorted(set(source_keys))
+    assignment_map: Dict[str, str] = {}
+
+    if manifest_path is not None and manifest_path.exists():
+        manifest = load_cache_manifest(manifest_path)
+        if manifest is not None:
+            stored_assignments = manifest.get("match_assignments", {})
+            assignment_map = {str(key): str(value) for key, value in stored_assignments.items()}
+
+    if not assignment_map:
+        rng = random.Random(int(split_seed))
+        shuffled_keys = list(unique_keys)
+        rng.shuffle(shuffled_keys)
+
+        train_count = int(round(float(split_ratio) * len(shuffled_keys)))
+        if len(shuffled_keys) > 1:
+            train_count = min(max(train_count, 1), len(shuffled_keys) - 1)
+        else:
+            train_count = len(shuffled_keys)
+
+        train_keys = set(shuffled_keys[:train_count])
+        assignment_map = {
+            key: ("train" if key in train_keys else "val")
+            for key in shuffled_keys
+        }
+
+        if manifest_path is not None:
+            write_cache_manifest(
+                manifest_path,
+                {
+                    "split_mode": "match",
+                    "split_ratio": float(split_ratio),
+                    "split_seed": int(split_seed),
+                    "match_assignments": assignment_map,
+                },
+            )
+
+    train_sources: List[ActionSource] = []
+    val_sources: List[ActionSource] = []
+    for source in sources:
+        source_path = str(source.get("source_path"))
+        key = source_to_key.get(source_path)
+        assignment = assignment_map.get(key, "train")
+        if assignment == "val":
+            val_sources.append(source)
+        else:
+            train_sources.append(source)
+
+    return train_sources, val_sources, {
+        "split_mode": "match",
+        "manifest_path": str(manifest_path) if manifest_path is not None else None,
+        "train_source_count": int(len(train_sources)),
+        "val_source_count": int(len(val_sources)),
+        "match_count": int(len(unique_keys)),
+    }
 
 
 def get_cache_root(custom_root: Optional[str] = None) -> Path:
@@ -286,6 +541,22 @@ def write_cache_manifest(manifest_path: Union[str, Path], manifest: Dict[str, An
     return target
 
 
+def _is_cache_manifest_current_with_fingerprint(
+    manifest: Optional[Dict[str, Any]],
+    expected_fingerprint: str,
+    cache_version: str,
+    dependencies: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if manifest is None:
+        return False
+    if manifest.get("cache_version") != cache_version:
+        return False
+    if manifest.get("source_fingerprint") != expected_fingerprint:
+        return False
+    expected_dependencies = dependencies or {}
+    return manifest.get("dependencies", {}) == expected_dependencies
+
+
 def is_cache_manifest_current(
     manifest: Optional[Dict[str, Any]],
     source_path: Union[str, Path],
@@ -371,6 +642,357 @@ def load_or_build_canonical_cache(
         "cache_manifest_path": str(manifest_path),
         "source_path": str(source),
         "rows_total": int(len(enriched_df)),
+        "merge_summary": merge_summary,
+    }
+
+
+def _normalize_processed_outcome_token(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    token = str(value).strip()
+    if not token:
+        return None
+    lowered = token.lower()
+    if lowered in NULL_EQUIVALENT_TOKENS:
+        return None
+
+    upper = token.upper()
+    if upper in PASS_OUTCOME_ALLOWED:
+        return upper
+
+    normalized = lowered.replace(" ", "_")
+    return PFF_PASS_OUTCOME_MAP.get(normalized)
+
+
+def _build_pff_source_fingerprint(source: ActionSource, source_format: str) -> str:
+    tracking_fp = get_source_fingerprint(source["tracking_path"])
+    events_fp = get_source_fingerprint(source["events_path"])
+    players_fp = get_source_fingerprint(source["players_path"])
+    data_version = source.get("data_version")
+    fingerprint_input = "|".join(
+        [
+            str(source.get("source_path")),
+            tracking_fp,
+            events_fp,
+            players_fp,
+            f"adapter={PFF_ADAPTER_VERSION}",
+            f"data_version={data_version}",
+            f"source_format={source_format}",
+        ]
+    )
+    return _hash_string(fingerprint_input, length=32)
+
+
+def _normalize_set_piece_token(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    token = str(value).strip().lower()
+    if not token or token in NULL_EQUIVALENT_TOKENS:
+        return None
+    mapping = {
+        "open_play": "open_play",
+        "corner": "corner",
+        "free_kick": "free_kick",
+        "throw_in": "throw_in",
+        "penalty": "penalty",
+        "goal_kick": "goal_kick",
+        "kick_off": "kick_off",
+    }
+    if token in mapping:
+        return mapping[token]
+    compact_mapping = {
+        "o": "open_play",
+        "c": "corner",
+        "f": "free_kick",
+        "t": "throw_in",
+        "p": "penalty",
+        "g": "goal_kick",
+        "k": "kick_off",
+    }
+    return compact_mapping.get(token)
+
+
+def _build_wide_snapshots_from_tracking(actions_df: pd.DataFrame, tracking_df: pd.DataFrame) -> pd.DataFrame:
+    if actions_df.empty:
+        return actions_df
+
+    required_tracking_columns = {"match_id", "frame_id", "x", "y", "team_id", "player_id"}
+    missing = required_tracking_columns - set(tracking_df.columns)
+    if missing:
+        raise ValueError(
+            f"PFF tracking dataframe missing required columns for wide snapshot pivot: {sorted(missing)}"
+        )
+
+    normalized_tracking = tracking_df.copy()
+    normalized_tracking["match_id"] = pd.to_numeric(normalized_tracking["match_id"], errors="coerce").astype("Int64")
+    normalized_tracking["frame_id"] = pd.to_numeric(normalized_tracking["frame_id"], errors="coerce").astype("Int64")
+    normalized_tracking["team_id"] = pd.to_numeric(normalized_tracking["team_id"], errors="coerce").astype("Int64")
+    normalized_tracking["player_id"] = pd.to_numeric(normalized_tracking["player_id"], errors="coerce").astype("Int64")
+
+    normalized_tracking = normalized_tracking.dropna(
+        subset=["match_id", "frame_id", "team_id", "player_id", "x", "y"]
+    )
+
+    grouped_frames: Dict[Tuple[int, int], pd.DataFrame] = {}
+    for (match_id, frame_id), frame_group in normalized_tracking.groupby(["match_id", "frame_id"], sort=False):
+        grouped_frames[(int(match_id), int(frame_id))] = frame_group.sort_values(
+            by=["team_id", "player_id"], kind="mergesort"
+        )
+
+    wide_rows: List[Dict[str, Any]] = []
+    for row_idx, action in actions_df.iterrows():
+        match_id = _normalize_id(action.get("game_id"))
+        frame_id = _normalize_id(action.get("frame_id"))
+        if match_id is None or frame_id is None:
+            continue
+
+        frame_players = grouped_frames.get((match_id, frame_id))
+        if frame_players is None or frame_players.empty:
+            continue
+
+        wide_row: Dict[str, Any] = {"_row_index": int(row_idx)}
+        for player_slot, (_, player) in enumerate(frame_players.iterrows(), start=1):
+            suffix = str(player_slot)
+            wide_row[f"x_player_{suffix}"] = float(player["x"])
+            wide_row[f"y_player_{suffix}"] = float(player["y"])
+            wide_row[f"team_id_player_{suffix}"] = int(player["team_id"])
+            wide_row[f"original_pId_player_{suffix}"] = int(player["player_id"])
+
+            if "vx" in frame_players.columns:
+                vx_value = player.get("vx")
+                if pd.notna(vx_value):
+                    wide_row[f"vx_player_{suffix}"] = float(vx_value)
+            if "vy" in frame_players.columns:
+                vy_value = player.get("vy")
+                if pd.notna(vy_value):
+                    wide_row[f"vy_player_{suffix}"] = float(vy_value)
+
+        wide_rows.append(wide_row)
+
+    if not wide_rows:
+        return actions_df
+
+    wide_df = pd.DataFrame(wide_rows)
+    merged = actions_df.copy()
+    merged["_row_index"] = merged.index.astype(int)
+    merged = merged.merge(wide_df, on="_row_index", how="left")
+    merged = merged.drop(columns=["_row_index"])
+    return merged
+
+
+def _canonicalize_pff_triplet_source(source: ActionSource) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    events_df = pd.read_parquet(source["events_path"])
+    tracking_df = pd.read_parquet(source["tracking_path"])
+
+    if "match_id" not in events_df.columns:
+        raise ValueError("PFF events.parquet missing required column: match_id")
+    if "event_id" not in events_df.columns:
+        raise ValueError("PFF events.parquet missing required column: event_id")
+    if "possession_id" not in events_df.columns:
+        raise ValueError("PFF events.parquet missing required column: possession_id")
+    if "possession_type" not in events_df.columns:
+        raise ValueError("PFF events.parquet missing required column: possession_type")
+
+    events = events_df.copy()
+    events["possession_type"] = events["possession_type"].astype(str).str.lower().str.strip()
+    pass_events = events[events["possession_type"] == "pass"].copy()
+
+    if pass_events.empty:
+        empty_df = pd.DataFrame(
+            columns=[
+                "game_id",
+                "game_event_id",
+                "possession_event_id",
+                "player_id",
+                "ball_x_start",
+                "ball_y_start",
+                "ball_x_end",
+                "ball_y_end",
+                "team_id",
+                "pass_outcome_type",
+                "frame_id",
+            ]
+        )
+        return empty_df, {
+            "rows_total": 0,
+            "rows_pass_events": 0,
+            "rows_missing_outcome": 0,
+            "rows_kept": 0,
+        }
+
+    pass_events["game_id"] = pd.to_numeric(pass_events["match_id"], errors="coerce").astype("Int64")
+    pass_events["game_event_id"] = pd.to_numeric(pass_events["event_id"], errors="coerce").astype("Int64")
+    pass_events["possession_event_id"] = pd.to_numeric(pass_events["possession_id"], errors="coerce").astype("Int64")
+    pass_events["player_id"] = pd.to_numeric(pass_events.get("player_id"), errors="coerce").astype("Int64")
+    pass_events["team_id"] = pd.to_numeric(pass_events.get("team_id"), errors="coerce").astype("Int64")
+
+    frame_source_col = "start_frame_id" if "start_frame_id" in pass_events.columns else "frame_id"
+    pass_events["frame_id"] = pd.to_numeric(pass_events.get(frame_source_col), errors="coerce").astype("Int64")
+
+    pass_events["ball_x_start"] = pd.to_numeric(
+        pass_events.get("ball_x_start", pass_events.get("ball_x")), errors="coerce"
+    )
+    pass_events["ball_y_start"] = pd.to_numeric(
+        pass_events.get("ball_y_start", pass_events.get("ball_y")), errors="coerce"
+    )
+    pass_events["ball_x_end"] = pd.to_numeric(
+        pass_events.get("ball_x_end", pass_events.get("ball_x")), errors="coerce"
+    )
+    pass_events["ball_y_end"] = pd.to_numeric(
+        pass_events.get("ball_y_end", pass_events.get("ball_y")), errors="coerce"
+    )
+
+    pass_events["pass_outcome_type"] = pass_events.get("pass_outcome", pd.Series(index=pass_events.index))
+    if "cross_outcome" in pass_events.columns:
+        pass_events["pass_outcome_type"] = pass_events["pass_outcome_type"].where(
+            pass_events["pass_outcome_type"].notna(),
+            pass_events["cross_outcome"],
+        )
+    pass_events["pass_outcome_type"] = pass_events["pass_outcome_type"].map(_normalize_processed_outcome_token)
+
+    if "set_piece" in pass_events.columns:
+        pass_events["set_piece_normalized"] = pass_events["set_piece"].map(_normalize_set_piece_token)
+
+    rows_total = int(len(events))
+    rows_pass = int(len(pass_events))
+    rows_missing_outcome = int(pass_events["pass_outcome_type"].isna().sum())
+
+    canonical_df = pass_events.dropna(
+        subset=[
+            "game_id",
+            "game_event_id",
+            "possession_event_id",
+            "player_id",
+            "team_id",
+            "frame_id",
+            "ball_x_start",
+            "ball_y_start",
+            "ball_x_end",
+            "ball_y_end",
+            "pass_outcome_type",
+        ]
+    ).copy()
+
+    canonical_df = _build_wide_snapshots_from_tracking(canonical_df, tracking_df)
+
+    canonical_df["game_id"] = canonical_df["game_id"].astype("Int64")
+    canonical_df["game_event_id"] = canonical_df["game_event_id"].astype("Int64")
+    canonical_df["possession_event_id"] = canonical_df["possession_event_id"].astype("Int64")
+    canonical_df["player_id"] = canonical_df["player_id"].astype("Int64")
+    canonical_df["team_id"] = canonical_df["team_id"].astype("Int64")
+
+    summary = {
+        "rows_total": rows_total,
+        "rows_pass_events": rows_pass,
+        "rows_missing_outcome": rows_missing_outcome,
+        "rows_kept": int(len(canonical_df)),
+    }
+    return canonical_df, summary
+
+
+def load_or_build_canonical_pass_cache(
+    source: Union[ActionSource, str, Path],
+    required_columns: List[str],
+    source_filename: Optional[str] = None,
+    event_root: Optional[str] = None,
+    cache_root: Optional[Union[str, Path]] = None,
+    source_format: str = PASS_SOURCE_FORMAT_AUTO,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Load canonical pass rows from legacy file or PFF match-triplet source."""
+    normalized_format = _normalize_source_format(source_format)
+
+    if isinstance(source, dict):
+        logical_source = dict(source)
+    else:
+        source_path = Path(source)
+        if not source_path.is_absolute():
+            source_path = (REPO_ROOT / source_path).resolve()
+        logical_source = {
+            "source_kind": PASS_SOURCE_FORMAT_LEGACY,
+            "source_format": PASS_SOURCE_FORMAT_LEGACY,
+            "source_name": source_filename or source_path.name,
+            "source_path": str(source_path),
+            "match_id": _extract_numeric_match_id(source_path.name),
+        }
+
+    source_kind = logical_source.get("source_kind", PASS_SOURCE_FORMAT_LEGACY)
+
+    if source_kind == PASS_SOURCE_FORMAT_LEGACY:
+        return load_or_build_canonical_cache(
+            source_path=logical_source["source_path"],
+            required_columns=required_columns,
+            source_filename=source_filename or logical_source.get("source_name"),
+            event_root=event_root,
+            cache_root=cache_root,
+        )
+
+    if source_kind != PASS_SOURCE_FORMAT_PFF:
+        raise ValueError(f"Unsupported source_kind for canonical loader: {source_kind}")
+
+    canonical_data_path, manifest_path = get_cache_artifact_paths(
+        source_path=logical_source["source_path"],
+        cache_family="canonical",
+        artifact_stem="enriched_passes",
+        data_suffix=".parquet",
+        cache_root=cache_root,
+    )
+    manifest = load_cache_manifest(manifest_path)
+
+    dependency_state = {
+        "source_kind": PASS_SOURCE_FORMAT_PFF,
+        "adapter_version": PFF_ADAPTER_VERSION,
+        "source_format": normalized_format,
+        "events_path": logical_source.get("events_path"),
+        "tracking_path": logical_source.get("tracking_path"),
+        "players_path": logical_source.get("players_path"),
+        "data_version": logical_source.get("data_version"),
+    }
+    expected_fingerprint = _build_pff_source_fingerprint(logical_source, normalized_format)
+
+    if canonical_data_path.exists() and _is_cache_manifest_current_with_fingerprint(
+        manifest=manifest,
+        expected_fingerprint=expected_fingerprint,
+        cache_version=CANONICAL_CACHE_VERSION,
+        dependencies=dependency_state,
+    ):
+        cached_df = pd.read_parquet(canonical_data_path)
+        return cached_df, {
+            "cache_hit": True,
+            "cache_data_path": str(canonical_data_path),
+            "cache_manifest_path": str(manifest_path),
+            "source_path": str(logical_source["source_path"]),
+            "source_kind": PASS_SOURCE_FORMAT_PFF,
+            "rows_total": int(len(cached_df)),
+            "merge_summary": manifest.get("merge_summary", {}),
+        }
+
+    canonical_df, merge_summary = _canonicalize_pff_triplet_source(logical_source)
+    validate_schema(
+        canonical_df,
+        required_columns + ["pass_outcome_type"],
+        source_file=source_filename or logical_source.get("source_name"),
+    )
+
+    canonical_data_path.parent.mkdir(parents=True, exist_ok=True)
+    canonical_df.to_parquet(canonical_data_path, index=False)
+    manifest_payload = {
+        "cache_version": CANONICAL_CACHE_VERSION,
+        "source_path": str(logical_source["source_path"]),
+        "source_fingerprint": expected_fingerprint,
+        "rows_total": int(len(canonical_df)),
+        "dependencies": dependency_state,
+        "merge_summary": merge_summary,
+        "cache_data_path": str(canonical_data_path),
+    }
+    write_cache_manifest(manifest_path, manifest_payload)
+
+    return canonical_df, {
+        "cache_hit": False,
+        "cache_data_path": str(canonical_data_path),
+        "cache_manifest_path": str(manifest_path),
+        "source_path": str(logical_source["source_path"]),
+        "source_kind": PASS_SOURCE_FORMAT_PFF,
+        "rows_total": int(len(canonical_df)),
         "merge_summary": merge_summary,
     }
 

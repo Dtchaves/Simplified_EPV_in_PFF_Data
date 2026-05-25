@@ -13,6 +13,32 @@ import pandas as pd
 
 NULL_EQUIVALENT_TOKENS = {"", "nan", "none", "null", "na", "n/a", "nat"}
 GOAL_OUT_TYPES = {"H", "A"}
+PROCESSED_GOAL_TOKENS = {"goal", "g"}
+
+
+def _normalize_processed_set_piece(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    token = str(value).strip().lower()
+    if not token or token in NULL_EQUIVALENT_TOKENS:
+        return None
+    mapping = {
+        "open_play": "open_play",
+        "corner": "corner",
+        "free_kick": "free_kick",
+        "throw_in": "throw_in",
+        "penalty": "penalty",
+        "goal_kick": "goal_kick",
+        "kick_off": "kick_off",
+        "o": "open_play",
+        "c": "corner",
+        "f": "free_kick",
+        "t": "throw_in",
+        "p": "penalty",
+        "g": "goal_kick",
+        "k": "kick_off",
+    }
+    return mapping.get(token, token)
 
 
 def _normalize_token(value: Any) -> Optional[str]:
@@ -280,6 +306,217 @@ class GameEventIndex:
         return label, metadata
 
 
+@dataclass(frozen=True)
+class ProcessedPassEvent:
+    game_event_id: Optional[int]
+    possession_event_id: Optional[int]
+    team_id: Optional[int]
+    event_time: Optional[float]
+    set_piece: Optional[str]
+
+
+@dataclass(frozen=True)
+class ProcessedGoalEvent:
+    team_id: Optional[int]
+    event_time: Optional[float]
+
+
+class ProcessedEventIndex:
+    def __init__(self, events_df: pd.DataFrame, tracking_df: Optional[pd.DataFrame], horizon_seconds: float = 15.0):
+        self.horizon_seconds = float(horizon_seconds)
+
+        self._by_pair: Dict[Tuple[int, int], List[ProcessedPassEvent]] = {}
+        self._by_game_event_id: Dict[int, List[ProcessedPassEvent]] = {}
+        self._by_possession_event_id: Dict[int, List[ProcessedPassEvent]] = {}
+        self._goal_events: List[ProcessedGoalEvent] = []
+
+        normalized_events = self._prepare_events(events_df, tracking_df)
+        pass_df = normalized_events[normalized_events["possession_type_norm"] == "pass"].copy()
+
+        for _, row in pass_df.iterrows():
+            event = ProcessedPassEvent(
+                game_event_id=_normalize_id(row.get("event_id")),
+                possession_event_id=_normalize_id(row.get("possession_id")),
+                team_id=_normalize_id(row.get("team_id")),
+                event_time=_as_float(row.get("elapsed_seconds")),
+                set_piece=_normalize_processed_set_piece(row.get("set_piece")),
+            )
+
+            if event.game_event_id is not None and event.possession_event_id is not None:
+                self._by_pair.setdefault((event.game_event_id, event.possession_event_id), []).append(event)
+            if event.game_event_id is not None:
+                self._by_game_event_id.setdefault(event.game_event_id, []).append(event)
+            if event.possession_event_id is not None:
+                self._by_possession_event_id.setdefault(event.possession_event_id, []).append(event)
+
+        shot_df = normalized_events[normalized_events["possession_type_norm"] == "shot"].copy()
+        shot_df["shot_outcome_norm"] = shot_df.get("shot_outcome", pd.Series(index=shot_df.index)).astype(str).str.lower().str.strip()
+        goals_df = shot_df[shot_df["shot_outcome_norm"].isin(PROCESSED_GOAL_TOKENS)]
+
+        for _, row in goals_df.iterrows():
+            goal_event = ProcessedGoalEvent(
+                team_id=_normalize_id(row.get("team_id")),
+                event_time=_as_float(row.get("elapsed_seconds")),
+            )
+            if goal_event.event_time is not None:
+                self._goal_events.append(goal_event)
+
+        self._goal_events.sort(key=lambda event: event.event_time if event.event_time is not None else float("inf"))
+
+    @staticmethod
+    def _prepare_events(events_df: pd.DataFrame, tracking_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+        normalized = events_df.copy()
+        normalized["possession_type_norm"] = normalized.get("possession_type", pd.Series(index=normalized.index)).astype(str).str.lower().str.strip()
+
+        has_elapsed = "elapsed_seconds" in normalized.columns and normalized["elapsed_seconds"].notna().any()
+        if has_elapsed:
+            normalized["elapsed_seconds"] = pd.to_numeric(normalized["elapsed_seconds"], errors="coerce")
+            return normalized
+
+        if tracking_df is None:
+            return normalized
+
+        if "match_id" not in normalized.columns or "frame_id" not in normalized.columns:
+            return normalized
+        if "match_id" not in tracking_df.columns or "frame_id" not in tracking_df.columns or "elapsed_seconds" not in tracking_df.columns:
+            return normalized
+
+        tracking = tracking_df[["match_id", "frame_id", "elapsed_seconds"]].copy()
+        tracking["match_id"] = pd.to_numeric(tracking["match_id"], errors="coerce").astype("Int64")
+        tracking["frame_id"] = pd.to_numeric(tracking["frame_id"], errors="coerce").astype("Int64")
+        tracking["elapsed_seconds"] = pd.to_numeric(tracking["elapsed_seconds"], errors="coerce")
+        tracking = tracking.dropna(subset=["match_id", "frame_id", "elapsed_seconds"])
+        tracking = tracking.drop_duplicates(subset=["match_id", "frame_id"], keep="first")
+
+        normalized["match_id"] = pd.to_numeric(normalized["match_id"], errors="coerce").astype("Int64")
+        normalized["frame_id"] = pd.to_numeric(normalized["frame_id"], errors="coerce").astype("Int64")
+
+        merged = normalized.merge(
+            tracking,
+            on=["match_id", "frame_id"],
+            how="left",
+            suffixes=("", "_tracking"),
+        )
+        merged["elapsed_seconds"] = merged["elapsed_seconds"].where(
+            merged["elapsed_seconds"].notna(),
+            merged["elapsed_seconds_tracking"],
+        )
+        return merged.drop(columns=[col for col in ["elapsed_seconds_tracking"] if col in merged.columns])
+
+    @staticmethod
+    def _select_best_candidate(candidates: List[ProcessedPassEvent], team_id: Optional[int]) -> Optional[ProcessedPassEvent]:
+        if not candidates:
+            return None
+
+        subset = list(candidates)
+        if team_id is not None:
+            team_subset = [candidate for candidate in subset if candidate.team_id == team_id]
+            if team_subset:
+                subset = team_subset
+
+        timed_subset = [candidate for candidate in subset if candidate.event_time is not None]
+        if timed_subset:
+            subset = timed_subset
+        return subset[0]
+
+    def resolve_pass_event(self, pass_row: pd.Series) -> Tuple[Optional[ProcessedPassEvent], str]:
+        game_event_id = _normalize_id(pass_row.get("game_event_id"))
+        possession_event_id = _normalize_id(pass_row.get("possession_event_id"))
+        team_id = _normalize_id(pass_row.get("team_id"))
+
+        if game_event_id is not None and possession_event_id is not None:
+            from_pair = self._select_best_candidate(
+                self._by_pair.get((game_event_id, possession_event_id), []),
+                team_id,
+            )
+            if from_pair is not None:
+                return from_pair, "pair"
+
+        if game_event_id is not None:
+            from_game_event = self._select_best_candidate(
+                self._by_game_event_id.get(game_event_id, []),
+                team_id,
+            )
+            if from_game_event is not None:
+                return from_game_event, "game_event_id"
+
+        if possession_event_id is not None:
+            from_possession_event = self._select_best_candidate(
+                self._by_possession_event_id.get(possession_event_id, []),
+                team_id,
+            )
+            if from_possession_event is not None:
+                return from_possession_event, "possession_event_id"
+
+        return None, "unmatched"
+
+    def _find_first_goal_after(self, event_time: float) -> Optional[ProcessedGoalEvent]:
+        horizon = event_time + self.horizon_seconds
+        for goal_event in self._goal_events:
+            goal_time = goal_event.event_time
+            if goal_time is None:
+                continue
+            if goal_time <= event_time:
+                continue
+            if goal_time > horizon:
+                break
+            return goal_event
+        return None
+
+    def label_pass_row(
+        self,
+        pass_row: pd.Series,
+        include_open_play_null: bool = True,
+    ) -> Tuple[Optional[int], Dict[str, Any]]:
+        resolved_event, join_strategy = self.resolve_pass_event(pass_row)
+
+        metadata: Dict[str, Any] = {
+            "join_strategy": join_strategy,
+            "status": "ok",
+            "pass_event_time": None,
+            "pass_setpiece_type": None,
+            "first_goal_time": None,
+            "first_goal_out_type": None,
+        }
+
+        if resolved_event is None:
+            metadata["status"] = "join_missing"
+            return None, metadata
+
+        metadata["pass_event_time"] = resolved_event.event_time
+        metadata["pass_setpiece_type"] = resolved_event.set_piece
+
+        if resolved_event.set_piece != "open_play":
+            if not (resolved_event.set_piece is None and include_open_play_null):
+                metadata["status"] = "setpiece_filtered"
+                return None, metadata
+
+        if resolved_event.event_time is None:
+            metadata["status"] = "missing_pass_time"
+            return None, metadata
+
+        first_goal = self._find_first_goal_after(resolved_event.event_time)
+        if first_goal is None:
+            metadata["status"] = "no_goal_window"
+            return 0, metadata
+
+        metadata["first_goal_time"] = first_goal.event_time
+        metadata["first_goal_out_type"] = "GOAL"
+
+        scoring_team_id = first_goal.team_id
+        pass_team_id = _normalize_id(pass_row.get("team_id"))
+        if pass_team_id is None:
+            pass_team_id = resolved_event.team_id
+
+        if scoring_team_id is None or pass_team_id is None:
+            metadata["status"] = "unknown_goal_team"
+            return 0, metadata
+
+        label = 1 if scoring_team_id == pass_team_id else -1
+        metadata["status"] = "goal_scored" if label == 1 else "goal_conceded"
+        return label, metadata
+
+
 class PassRewardLabeler:
     def __init__(
         self,
@@ -291,6 +528,7 @@ class PassRewardLabeler:
         self.horizon_seconds = float(horizon_seconds)
         self.include_open_play_null = bool(include_open_play_null)
         self._cache: Dict[int, GameEventIndex] = {}
+        self._processed_cache: Dict[Tuple[str, Optional[str]], ProcessedEventIndex] = {}
 
     @staticmethod
     def _extract_game_id(pass_df: pd.DataFrame, source_filename: Optional[str]) -> Optional[int]:
@@ -326,20 +564,51 @@ class PassRewardLabeler:
         self._cache[game_id] = game_index
         return game_index
 
+    def _get_processed_index(
+        self,
+        events_path: Path,
+        tracking_path: Optional[Path],
+    ) -> ProcessedEventIndex:
+        cache_key = (str(events_path.resolve()), str(tracking_path.resolve()) if tracking_path else None)
+        if cache_key in self._processed_cache:
+            return self._processed_cache[cache_key]
+
+        events_df = pd.read_parquet(events_path)
+        tracking_df = pd.read_parquet(tracking_path) if tracking_path is not None and tracking_path.exists() else None
+
+        index = ProcessedEventIndex(
+            events_df=events_df,
+            tracking_df=tracking_df,
+            horizon_seconds=self.horizon_seconds,
+        )
+        self._processed_cache[cache_key] = index
+        return index
+
     def label_pass_dataframe(
         self,
         pass_df: pd.DataFrame,
         source_filename: Optional[str] = None,
         drop_unlabeled: bool = True,
+        source_kind: str = "legacy_wide",
+        processed_events_path: Optional[str | Path] = None,
+        processed_tracking_path: Optional[str | Path] = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         game_id = self._extract_game_id(pass_df, source_filename)
-        if game_id is None:
-            raise ValueError(
-                "Could not resolve game_id from pass dataframe. "
-                "Expected column 'game_id' or a filename containing a numeric game id."
-            )
 
-        game_index = self._get_game_index(game_id)
+        if source_kind == "pff_match_triplets":
+            if processed_events_path is None:
+                raise ValueError("processed_events_path is required for pff_match_triplets reward labeling")
+
+            events_path = Path(processed_events_path)
+            tracking_path = Path(processed_tracking_path) if processed_tracking_path is not None else None
+            game_index: Any = self._get_processed_index(events_path, tracking_path)
+        else:
+            if game_id is None:
+                raise ValueError(
+                    "Could not resolve game_id from pass dataframe. "
+                    "Expected column 'game_id' or a filename containing a numeric game id."
+                )
+            game_index = self._get_game_index(game_id)
 
         labeled_df = pass_df.copy()
         labels: List[Optional[int]] = []
@@ -373,6 +642,7 @@ class PassRewardLabeler:
 
         summary: Dict[str, Any] = {
             "game_id": game_id,
+            "source_kind": source_kind,
             "rows_total": int(len(labeled_df)),
             "rows_labeled": int(labeled_df["reward_label"].notna().sum()),
             "rows_dropped": int(labeled_df["reward_label"].isna().sum()),

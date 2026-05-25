@@ -11,8 +11,21 @@ import torch
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from data_utils import discover_pass_sources, load_or_build_canonical_pass_cache
+
 
 ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_COLUMNS = [
+    "game_id",
+    "game_event_id",
+    "possession_event_id",
+    "player_id",
+    "ball_x_start",
+    "ball_y_start",
+    "ball_x_end",
+    "ball_y_end",
+    "team_id",
+]
 
 
 def load_module(name: str, path: Path):
@@ -39,17 +52,22 @@ def load_soccermap_class(package_dir: Path, class_name: str):
 
 
 def build_single_sample(root: Path):
-    pass_files = sorted((root / "passes").glob("final_pass_track_*.csv"))
-    if not pass_files:
-        raise FileNotFoundError("No pass CSV files found under passes/.")
+    sources = discover_pass_sources("data/passes", source_format="auto")
+    if not sources:
+        raise FileNotFoundError("No canonical pass sources found under data/passes.")
 
     source_file = None
     row = None
-    for csv_path in pass_files:
-        df = pd.read_csv(csv_path)
+    for source in sources:
+        source_file = Path(source["source_path"])
+        df, _ = load_or_build_canonical_pass_cache(
+            source=source,
+            required_columns=REQUIRED_COLUMNS,
+            source_filename=source.get("source_name"),
+            event_root="data/raw/event",
+        )
         valid = df[df["pass_outcome_type"].notna()]
         if not valid.empty:
-            source_file = csv_path
             row = valid.iloc[0]
             break
 

@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from data_utils import discover_pass_sources, load_or_build_canonical_pass_cache
 from reward_labels import PassRewardLabeler
 
 matplotlib.use("Agg")
@@ -21,6 +22,17 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parents[2]
 PE_DIR = ROOT / "src/Pass/Pass_epv_missed"
 MISSED_PASS_OUTCOMES = {"D", "B", "O", "S", "G", "I"}
+REQUIRED_COLUMNS = [
+    "game_id",
+    "game_event_id",
+    "possession_event_id",
+    "player_id",
+    "ball_x_start",
+    "ball_y_start",
+    "ball_x_end",
+    "ball_y_end",
+    "team_id",
+]
 
 
 def _load_pe_modules():
@@ -40,9 +52,9 @@ def _load_pe_modules():
 
 
 def run_filter_contract_checks() -> Dict[str, int]:
-    pass_files = sorted((ROOT / "passes").glob("final_pass_track_*.csv"))
-    if not pass_files:
-        raise FileNotFoundError("No pass CSV files found under 'passes/'.")
+    sources = discover_pass_sources("data/passes", source_format="auto")
+    if not sources:
+        raise FileNotFoundError("No canonical pass sources found under data/passes.")
 
     labeler = PassRewardLabeler(
         event_root=ROOT / "data/raw/event",
@@ -54,8 +66,13 @@ def run_filter_contract_checks() -> Dict[str, int]:
     status_counter: Counter = Counter()
     rows_after_filters = 0
 
-    for pass_file in pass_files:
-        source_df = pd.read_csv(pass_file)
+    for source in sources:
+        source_df, _ = load_or_build_canonical_pass_cache(
+            source=source,
+            required_columns=REQUIRED_COLUMNS,
+            source_filename=source.get("source_name"),
+            event_root="data/raw/event",
+        )
         source_df = source_df[source_df["pass_outcome_type"].notna()].copy()
         source_df = source_df[source_df["pass_outcome_type"].isin(MISSED_PASS_OUTCOMES)].copy()
         if source_df.empty:
@@ -63,20 +80,23 @@ def run_filter_contract_checks() -> Dict[str, int]:
 
         labeled_df, _ = labeler.label_pass_dataframe(
             source_df,
-            source_filename=pass_file.name,
+            source_filename=source.get("source_name"),
             drop_unlabeled=True,
+            source_kind=str(source.get("source_kind", "legacy_wide")),
+            processed_events_path=source.get("events_path"),
+            processed_tracking_path=source.get("tracking_path"),
         )
         if labeled_df.empty:
             continue
 
         assert (~labeled_df["pass_outcome_type"].eq("C")).all(), (
-            f"Found successful outcomes after PE-missed filter in {pass_file.name}."
+            f"Found successful outcomes after PE-missed filter in {source.get('source_name')}."
         )
 
         labels = labeled_df["reward_label"].astype(int)
         unique_values = set(labels.unique().tolist())
         assert unique_values.issubset({-1, 0, 1}), (
-            f"Unexpected reward labels in {pass_file.name}: {sorted(unique_values)}"
+            f"Unexpected reward labels in {source.get('source_name')}: {sorted(unique_values)}"
         )
 
         rows_after_filters += int(len(labeled_df))
@@ -102,7 +122,7 @@ def run_pe_missed_checkpoint() -> None:
     filter_summary = run_filter_contract_checks()
 
     dataset = pe_dataloader.PFFDataset(
-        train_directory=str(ROOT / "passes"),
+        train_directory="data/passes",
         split_ratio=0.8,
         pass_outcome_filter="MISSED",
         reward_event_directory="data/raw/event",
