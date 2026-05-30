@@ -1,0 +1,9 @@
+fastparquet>=2024.11.0
+gandula==0.2.7
+ipykernel>=7.0.0
+ipython>=9.6.0
+ipywidgets>=8.1.7
+jupyter>=1.1.1
+pyarrow>=21.0.0
+scikit-learn>=1.7.2
+umap-learn>=0.5.9.post2

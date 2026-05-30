@@ -42,6 +42,9 @@ _PASS_OUTCOME_INDEX_CACHE: Dict[Tuple[str, int], pd.DataFrame] = {}
 PASS_SOURCE_FORMAT_AUTO = "auto"
 PASS_SOURCE_FORMAT_LEGACY = "legacy_wide"
 PASS_SOURCE_FORMAT_PFF = "pff_match_triplets"
+ACTION_SOURCE_FORMAT_AUTO = PASS_SOURCE_FORMAT_AUTO
+ACTION_SOURCE_FORMAT_LEGACY = PASS_SOURCE_FORMAT_LEGACY
+ACTION_SOURCE_FORMAT_PFF = PASS_SOURCE_FORMAT_PFF
 
 PFF_PASS_OUTCOME_MAP = {
     "completed": "C",
@@ -207,6 +210,21 @@ def discover_pass_sources(
         }
         for path in legacy_files
     ]
+
+
+def discover_action_sources(
+    directory: Union[str, Path],
+    source_format: str = ACTION_SOURCE_FORMAT_AUTO,
+    prefer_parquet: bool = True,
+    require_extension: Optional[str] = None,
+) -> List[ActionSource]:
+    """Discover generic action sources using the same adapters/caches as pass discovery."""
+    return discover_pass_sources(
+        directory=directory,
+        source_format=source_format,
+        prefer_parquet=prefer_parquet,
+        require_extension=require_extension,
+    )
 
 
 def split_sources_by_mode(

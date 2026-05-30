@@ -7,3 +7,5 @@ scikit-learn>=1.0.0
 matplotlib>=3.4.0
 seaborn>=0.11.0
 tqdm>=4.62.0
+gandula>=0.2.7
+xgboost>=2.0.0

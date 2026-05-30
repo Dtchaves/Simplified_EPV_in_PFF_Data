@@ -1,0 +1,562 @@
+Metadata-Version: 2.4
+Name: replai
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastparquet>=2024.11.0
+Requires-Dist: gandula==0.2.7
+Requires-Dist: ipykernel>=7.0.0
+Requires-Dist: ipython>=9.6.0
+Requires-Dist: ipywidgets>=8.1.7
+Requires-Dist: jupyter>=1.1.1
+Requires-Dist: pyarrow>=21.0.0
+Requires-Dist: scikit-learn>=1.7.2
+Requires-Dist: umap-learn>=0.5.9.post2
+
+# replAI
+
+## Table of Contents
+- [replAI](#replai)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Project Overview](#project-overview)
+    - [Motivation](#motivation)
+    - [Key Features](#key-features)
+    - [Technical Stack](#technical-stack)
+    - [Project Structure](#project-structure)
+    - [Use Cases](#use-cases)
+  - [Installation](#installation)
+    - [Requirements](#requirements)
+    - [Setup](#setup)
+    - [Quick Start](#quick-start)
+    - [Command-Line Processing](#command-line-processing)
+  - [Dataset and Data Processing](#dataset-and-data-processing)
+    - [Data Sources](#data-sources)
+    - [Data Structure](#data-structure)
+    - [Dataset Class](#dataset-class)
+    - [Data Pipeline](#data-pipeline)
+    - [Processed Data Format](#processed-data-format)
+  - [Features](#features)
+  - [Autoencoder](#autoencoder)
+  - [Model Architecture](#model-architecture)
+  - [Training](#training)
+  - [Evaluation](#evaluation)
+  - [Usage](#usage)
+  - [Results](#results)
+  - [Contributing](#contributing)
+    - [Development Setup](#development-setup)
+    - [Code Style](#code-style)
+  - [License](#license)
+  - [References](#references)
+
+---
+
+## Introduction
+
+**replAI** is an innovative football analytics framework focused on **interpretable AI** for understanding and explaining complex tactical patterns in football matches. Unlike traditional black-box machine learning approaches, replAI emphasizes transparency, explainability, and human-understandable insights derived from high-resolution tracking data.
+
+The project leverages the same rich PFF (Pro Football Focus) tracking data used in other football analytics projects but with a fundamentally different approach: **making AI models interpretable and explainable** rather than focusing solely on predictive performance.
+
+The key innovation is using **interpretable machine learning techniques** to analyze:
+- **Tactical patterns**: Team formations, pressing triggers, and positional play
+- **Player movements**: Individual and collective movement patterns
+- **Game dynamics**: Momentum shifts, tactical adjustments, and key moments
+- **Decision making**: Understanding why certain actions lead to specific outcomes
+
+By presenting complex tracking data through interpretable models and visualization techniques, replAI enables coaches, analysts, and researchers to gain actionable insights while understanding the reasoning behind AI-generated conclusions.
+
+This repository provides a complete pipeline from raw data processing to interpretable model training, built on PFF tracking data from top-tier competitions including the Premier League, UEFA Champions League, and World Cup.
+
+## Project Overview
+
+### Motivation
+
+Traditional football analytics face two main limitations:
+
+1. **Black-Box Models**: Most AI systems provide predictions without explaining *why* they made specific decisions, making it difficult for coaches and analysts to trust and act on the insights.
+
+2. **Lack of Tactical Understanding**: While models can identify patterns, they often fail to provide human-interpretable explanations of tactical concepts, team dynamics, and strategic reasoning.
+
+**replAI addresses both limitations by prioritizing interpretability**:
+- **Explainable Models**: Every prediction comes with clear reasoning and supporting evidence
+- **Tactical Interpretability**: AI insights are presented in football terminology that coaches understand
+- **Visual Explanations**: Complex patterns are visualized in intuitive ways
+- **Human-AI Collaboration**: Models augment human expertise rather than replace it
+- **Transparency**: All decisions are traceable and auditable
+
+### Key Features
+
+- **Interpretable AI Framework**: Novel approach using explainable machine learning for football analysis
+- **Comprehensive Data Pipeline**: Automated loading, processing, and synchronization of tracking and event data
+- **Rich Feature Engineering**: Extraction of spatial, temporal, and contextual features from raw tracking coordinates
+- **Tactical Visualization**: Built-in utilities for plotting tactical patterns, player movements, and heatmaps
+- **Flexible Dataset Class**: Easy-to-use interface for data loading with caching and version control
+- **Modular Architecture**: Clean separation between data processing, feature engineering, and model interpretation
+- **Coach-Friendly Outputs**: Results presented in football terminology with clear explanations
+
+### Technical Stack
+
+- **Interpretable ML**: SHAP, LIME, partial dependence plots for model explanation
+- **Data Processing**: `pandas`, `numpy` for tabular operations
+- **Tracking Data**: `gandula` library for PFF data parsing
+- **Visualization**: `mplsoccer` for pitch visualizations, `matplotlib`, `seaborn`, `plotly`
+- **Storage**: Parquet format for efficient data serialization
+- **Feature Engineering**: Velocity and acceleration calculations via Kalman-smoothed trajectories
+- **Model Interpretation**: `shap`, `lime`, `sklearn` for explainable models
+
+### Project Structure
+
+```
+replAI/
+├── src/
+│   ├── dataset.py        # Main dataset class for data loading
+│   ├── events.py         # Event parsing and filtering
+│   ├── tracking.py       # Tracking data processing
+│   └── visualization.py  # Plotting utilities
+├── scripts/
+│   └── pff_data_processor.py  # CLI script for batch processing
+├── notebooks/
+│   └── 0_load_data.ipynb # Usage examples and tutorials
+├── data/
+│   ├── raw/              # Original PFF data files
+│   └── interim/          # Processed parquet files
+└── docs/
+    └── Pitch Interpretabilidade.pdf  # Project proposal document
+```
+
+### Use Cases
+
+1. **Tactical Analysis**: Understand team formations, pressing patterns, and positional play through interpretable models
+2. **Performance Evaluation**: Assess team and player performance with clear explanations of contributing factors
+3. **Coaching Insights**: Get actionable recommendations with reasoning that coaches can understand and trust
+4. **Scouting Intelligence**: Identify tactical patterns and player characteristics with transparent explanations
+5. **Research & Development**: Investigate complex factors influencing match outcomes using interpretable AI
+6. **Model Validation**: Ensure AI predictions align with football expertise and can be trusted by practitioners
+7. **Educational Tool**: Use interpretable outputs to teach tactical concepts and analytical thinking
+
+## Installation
+
+### Requirements
+
+- Python 3.11 or higher
+- [uv](https://docs.astral.sh/uv/) package manager (recommended) or pip
+
+### Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/replAI.git
+   cd replAI
+   ```
+
+2. **Create a virtual environment**
+   
+   Using uv (recommended):
+   ```bash
+   uv venv
+   ```
+   
+   Or using standard Python:
+   ```bash
+   python -m venv .venv
+   ```
+
+3. **Activate the virtual environment**
+   
+   On Windows:
+   ```bash
+   .venv\Scripts\activate
+   ```
+   
+   On macOS/Linux:
+   ```bash
+   source .venv/bin/activate
+   ```
+
+4. **Install dependencies**
+
+   Using uv (recommended):
+   ```bash
+   uv pip install -e .
+   ```
+
+   Or using pip:
+   ```bash
+   pip install -e .
+   ```
+
+5. **Set up data directory structure**
+   ```bash
+   mkdir -p data/raw/PL/24-25/tracking
+   mkdir -p data/raw/PL/24-25/events
+   mkdir -p data/interim
+   ```
+
+6. **Add your PFF data files**
+   - Place tracking files (`.jsonl.bz2`) in `data/raw/{competition}/{season}/tracking/`
+   - Place event files (`_events.json`) in `data/raw/{competition}/{season}/events/`
+
+### Quick Start
+
+```python
+from src.dataset import PFFDataset
+
+# Initialize dataset
+dataset = PFFDataset(competition='PL', season='24-25')
+
+# Load data for 3 matches
+dataset.load_data(n_matches=3, add_velocity=True, event_type='shot')
+
+# Access the data
+tracking_df = dataset.tracking[0]  # First match tracking data
+events_df = dataset.events[0]      # First match events
+players_df = dataset.players[0]    # First match player info
+```
+
+For detailed examples, see the [notebooks](notebooks/0_load_data.ipynb).
+
+### Command-Line Processing
+
+For batch processing or automated workflows, use the provided command-line script:
+
+```bash
+# Process 5 matches from PL 24-25 season
+python scripts/pff_data_processor.py --competition PL --season 24-25 --n_matches 5
+
+# Process specific range of match IDs
+python scripts/pff_data_processor.py --competition PL --season 24-25 --match_ids 32230-32234
+
+# Process with velocity features (slower but more detailed)
+python scripts/pff_data_processor.py --competition PL --season 24-25 --n_matches 3 --add_velocity
+
+# Process all available matches
+python scripts/pff_data_processor.py --competition PL --season 24-25
+```
+
+**Available Options:**
+
+| Option | Required | Description | Example |
+|--------|----------|-------------|---------|
+| `--competition` | Yes | Competition code | `PL`, `UCL`, `WC`, `BR` |
+| `--season` | Yes | Season identifier | `24-25`, `23-24` |
+| `--n_matches` | No | Number of matches to load | `5` |
+| `--match_ids` | No | Range of match IDs to process | `32230-32234` |
+| `--add_velocity` | No | Calculate velocity features | flag only |
+| `--event_type` | No | Event type to filter (default: `shot`) | `shot` |
+
+**Note:** The script always reprocesses data (overwrite=True) and saves the results to the interim directory.
+
+---
+
+## Dataset and Data Processing
+
+### Data Sources
+
+The project uses **PFF (Pro Football Focus) data**, which includes:
+- **Tracking data**: Player and ball positions sampled at high frequency (typically 10-25 Hz)
+- **Event data**: Discrete game events like shots, passes, tackles, etc.
+
+Supported competitions:
+- `PL` - Premier League
+- `UCL` - UEFA Champions League  
+- `WC` - World Cup
+- `BR` - Brazilian League
+
+Supported seasons:
+- `23`, `24` - Single year identifiers
+- `22-23`, `23-24`, `24-25` - Season ranges
+
+### Data Structure
+
+The raw data is organized in the following directory structure:
+
+```
+data/
+├── raw/
+│   └── {competition}/
+│       └── {season}/
+│           ├── tracking/
+│           │   └── {match_id}.jsonl.bz2
+│           └── events/
+│               └── {match_id}_events.json
+├── interim/
+│   └── {competition}/
+│       └── {season}/
+│           └── {match_id}/
+│               ├── tracking.parquet
+│               ├── events.parquet
+│               └── players.parquet
+```
+
+**Raw Data Files:**
+- **Tracking files** (`{match_id}.jsonl.bz2`): Compressed JSONL files containing frame-by-frame player and ball positions
+- **Event files** (`{match_id}_events.json`): JSON files with game events and metadata
+
+**Processed Data Files:**
+- **tracking.parquet**: Processed tracking data with player positions, velocities (optional), and metadata
+- **events.parquet**: Filtered and processed event data (e.g., shots only)
+- **players.parquet**: Player roster information including team assignments and positions
+
+### Dataset Class
+
+The `PFFDataset` class (in `src/dataset.py`) handles all data loading and processing operations.
+
+**Initialization:**
+
+```python
+from src.dataset import PFFDataset
+
+# Initialize dataset for Premier League 2024-25 season
+dataset = PFFDataset(competition='PL', season='24-25')
+```
+
+**Key Parameters:**
+- `competition`: Competition code (`PL`, `UCL`, `WC`, `BR`)
+- `season`: Season identifier (`23-24`, `24-25`, etc.)
+
+**Main Methods:**
+
+```python
+# Load data for specific number of matches
+dataset.load_data(
+    n_matches=5,              # Number of matches to load
+    match_ids=None,           # Or specify exact match IDs
+    add_velocity=True,        # Calculate velocity features
+    event_type='shot',        # Filter event type
+    save=True,                # Save processed data
+    overwrite=False           # Overwrite existing files
+)
+
+# Access loaded data
+tracking = dataset.tracking      # List of tracking DataFrames
+events = dataset.events          # List of event DataFrames
+players = dataset.players        # List of player info DataFrames
+```
+
+### Data Pipeline
+
+The data processing pipeline consists of the following steps:
+
+**1. Raw Data Loading**
+   - Load tracking data from compressed JSONL files
+   - Load event data from JSON files
+   - Parse nested JSON structures
+
+**2. Tracking Data Processing**
+   - Convert raw frames to structured DataFrames
+   - Extract player positions (x, y coordinates)
+   - Extract ball positions (x, y, z coordinates)
+   - Add temporal information (frame_id, period, elapsed_seconds)
+   - Optional: Calculate velocity and acceleration features
+
+**3. Event Data Processing**
+   - Extract game events from nested JSON
+   - Filter by event type (currently supports 'shot')
+   - Parse event attributes (outcome, shot type, body part, etc.)
+   - Extract player and team information
+
+**4. Data Integration**
+   - Match tracking frames with event frames
+   - Merge player roster information
+   - Standardize coordinate systems
+   - Adjust for team orientation (home team starting left/right)
+
+**5. Feature Engineering**
+   - **Velocity features** (if `add_velocity=True`):
+     - Player velocities: `vx`, `vy`, `speed`
+     - Player accelerations: `ax`, `ay`
+     - Ball velocities: `ball_vx`, `ball_vy`, `ball_vz`, `ball_speed`
+     - Ball accelerations: `ball_ax`, `ball_ay`, `ball_az`
+   
+**6. Data Serialization**
+   - Convert to Parquet format for efficient storage
+   - Maintain data types for downstream processing
+   - Enable fast reloading via caching
+
+### Processed Data Format
+
+**Tracking DataFrame Schema:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `match_id` | int | Unique match identifier |
+| `frame_id` | int | Frame number in the match |
+| `period` | int | Game period (1, 2, etc.) |
+| `elapsed_seconds` | float | Time elapsed in period |
+| `team_id` | int | Team identifier |
+| `player_id` | int | Player identifier |
+| `x` | float | Player x-coordinate (meters) |
+| `y` | float | Player y-coordinate (meters) |
+| `ball_x` | float | Ball x-coordinate (meters) |
+| `ball_y` | float | Ball y-coordinate (meters) |
+| `ball_z` | float | Ball z-coordinate (meters) |
+| `shirt` | str | Player shirt number |
+| `team_side` | str | 'home' or 'away' |
+| `team_phase` | str | Team possession phase |
+
+*Plus velocity/acceleration columns if enabled*
+
+**Events DataFrame Schema:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `match_id` | int | Unique match identifier |
+| `event_id` | int | Event identifier |
+| `possession_id` | int | Possession sequence identifier |
+| `frame_id` | int | Corresponding frame number |
+| `team_id` | int | Team performing the event |
+| `player_id` | int | Player performing the event |
+| `possession_type` | str | Type of possession (e.g., 'SH' for shot) |
+| `x` | float | Event x-coordinate (meters) |
+| `y` | float | Event y-coordinate (meters) |
+| `outcome` | str | Event outcome (e.g., 'Goal', 'SavedShot') |
+| `shot_type` | str | Type of shot |
+| `body_part` | str | Body part used |
+| `body_movement_type` | str | Movement type during event |
+| `ball_moving` | bool | Whether ball was moving |
+| `nature_type` | str | Nature of the play |
+| `ball_height` | str | Ball height category |
+| `team_side` | str | 'home' or 'away' |
+| `home_team_start_left` | bool | Home team orientation |
+| `data_version` | str | Processing version identifier |
+
+**Players DataFrame Schema:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `player_id` | int | Unique player identifier |
+| `player_name` | str | Player nickname/name |
+| `team_id` | int | Team identifier |
+| `team_name` | str | Team name |
+| `shirt_number` | int | Jersey number |
+| `position_name` | str | Position group |
+| `preferred_foot` | str | Preferred foot |
+| `team_side` | str | 'home' or 'away' |
+
+**Usage Example:**
+
+```python
+from src.dataset import PFFDataset
+
+# Initialize and load data
+dataset = PFFDataset('PL', '24-25')
+dataset.load_data(n_matches=3, add_velocity=True, event_type='shot')
+
+# Access first match data
+tracking_df = dataset.tracking[0]
+events_df = dataset.events[0]
+players_df = dataset.players[0]
+
+# Example: Get all shots that resulted in goals
+goals = events_df[events_df['outcome'] == 'goal']
+
+# Example: Get player positions at time of shot
+shot_frame = events_df.iloc[0]['frame_id']
+positions_at_shot = tracking_df[tracking_df['frame_id'] == shot_frame]
+```
+
+---
+
+## Features
+
+*[This section will be expanded as interpretable ML features are implemented]*
+
+## Autoencoder
+
+The project includes convolutional autoencoders for learning compressed representations of football tracking data. These models transform high-dimensional frame representations (3×5×6 tensors) into compact latent vectors (32-dimensional embeddings) that capture tactical patterns.
+
+**Purpose:**
+
+- Dimensionality reduction while preserving tactical information
+- Enable similarity search and pattern discovery
+- Generate embeddings for downstream machine learning tasks
+
+**Training:**
+
+To train the autoencoder models, use the training notebook:
+
+```bash
+# Open the training notebook
+jupyter notebook notebooks/3.1_train_autoencoder.ipynb
+```
+
+The notebook will train both ConvAutoencoder and MaskedConvAutoencoder models, saving the trained weights to `models/` directory.
+
+**Getting Embeddings:**
+
+```python
+import torch
+import pandas as pd
+from src.autoencoder import ConvAutoencoder, extract_embeddings
+from torch.utils.data import DataLoader
+
+# Load trained model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = ConvAutoencoder(in_channels=3, latent_dim=32, height=5, width=6)
+model.load_state_dict(torch.load("models/conv_autoencoder.pth", map_location=device))
+model.to(device)
+model.eval()
+
+# Extract embeddings from data
+embeddings, originals, reconstructions = extract_embeddings(
+    model, dataloader, masked=False, device=device
+)
+
+# Or load pre-computed embeddings with metadata
+embeddings_df = pd.read_pickle("data/processed/embeddings/embeddings_with_metadata.pkl")
+```
+
+For detailed exploration and visualization, see `notebooks/4_explore_autoencoder.ipynb`.
+
+## Model Architecture
+
+*[This section will be expanded as interpretable models are developed]*
+
+## Training
+
+*[This section will be expanded as training procedures are implemented]*
+
+## Evaluation
+
+*[This section will be expanded as evaluation metrics are defined]*
+
+## Usage
+
+*[This section will be expanded with interpretable ML usage examples]*
+
+## Results
+
+*[This section will be expanded with interpretability results and case studies]*
+
+## Contributing
+
+We welcome contributions to replAI! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to contribute.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature-name`
+3. Make your changes and add tests
+4. Ensure all tests pass: `pytest`
+5. Submit a pull request
+
+### Code Style
+
+- Follow PEP 8 style guidelines
+- Use type hints for function parameters and return values
+- Add docstrings to all public functions and classes
+- Include tests for new functionality
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## References
+
+- [PFF Data Documentation](https://docs.profootballfocus.com/)
+- [Interpretable Machine Learning](https://christophm.github.io/interpretable-ml-book/)
+- [SHAP Documentation](https://shap.readthedocs.io/)
+- [LIME Documentation](https://lime-ml.readthedocs.io/)
+- [mplsoccer Documentation](https://mplsoccer.readthedocs.io/)
+- [Gandula Documentation](https://gandula.readthedocs.io/)

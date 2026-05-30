@@ -97,6 +97,7 @@ class PFFDataset:
         event_type: str = 'all',
         save: bool = True,
         overwrite: bool = False,
+        filter_tracking_to_event_frames: bool = False,
     ) -> None:
         """
         Load and process data for specified matches.
@@ -112,7 +113,12 @@ class PFFDataset:
         matches_to_load = self._determine_matches_to_load(n_matches, match_ids)
 
         self._load_data(
-            matches_to_load, add_velocity, event_type, save, overwrite
+            matches_to_load,
+            add_velocity,
+            event_type,
+            save,
+            overwrite,
+            filter_tracking_to_event_frames,
         )
 
     def _load_data(
@@ -121,7 +127,8 @@ class PFFDataset:
         add_velocity: bool,
         event_type: str,
         save: bool,
-        overwrite: bool
+        overwrite: bool,
+        filter_tracking_to_event_frames: bool,
     ) -> None:
         """Load data sequentially (original implementation)."""
         for match_id in tqdm(matches_to_load, desc="Loading matches"):
@@ -131,11 +138,19 @@ class PFFDataset:
                         tracking_df, events_df, players_info = self._load_cached_data(match_id)
                     except ValueError:
                         tracking_df, events_df, players_info = self._process_match(
-                            match_id, add_velocity, event_type, save
+                            match_id,
+                            add_velocity,
+                            event_type,
+                            save,
+                            filter_tracking_to_event_frames,
                         )
                 else:
                     tracking_df, events_df, players_info = self._process_match(
-                        match_id, add_velocity, event_type, save
+                        match_id,
+                        add_velocity,
+                        event_type,
+                        save,
+                        filter_tracking_to_event_frames,
                     )
 
                 self.players.append(players_info)
@@ -182,7 +197,8 @@ class PFFDataset:
         match_id: str,
         add_velocity: bool,
         event_type: str,
-        save: bool
+        save: bool,
+        filter_tracking_to_event_frames: bool,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Process a single match from raw data."""
         # Load raw data
@@ -195,8 +211,9 @@ class PFFDataset:
         # Merge metadata with events
         events_df = self._merge_event_metadata(events_df, metadata_df)
 
-        # Filter tracking to relevant frames and make serializable
-        tracking_df = self._filter_tracking_frames(tracking_df, events_df)
+        # Keep continuous tracking by default. Event-frame filtering is optional.
+        if filter_tracking_to_event_frames:
+            tracking_df = self._filter_tracking_frames(tracking_df, events_df)
         tracking_df = self._make_serializable(tracking_df)
 
         # Standardize event ID columns
