@@ -6,3 +6,6 @@
 *.pdf
 *.json
 *.csv
+*.err
+*.log
+/results/logs/*

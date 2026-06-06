@@ -212,3 +212,129 @@ class ShotTrainer:
             "val_rows": int(len(splits["val"])),
             "test_rows": int(len(splits["test"])),
         }
+
+
+def test_shot_model(
+    dataset: pd.DataFrame,
+    model_dir: Optional[Path] = None,
+    device: Optional[str] = None,
+) -> Dict[str, object]:
+    if dataset.empty:
+        raise ValueError("Shot dataset is empty.")
+    if "split" not in dataset.columns:
+        raise ValueError("Shot dataset must contain a 'split' column.")
+
+    feature_builder = ShotFeatureBuilder()
+    required_columns = list(feature_builder.feature_columns) + ["reward_norm"]
+    clean = dataset.dropna(subset=required_columns + ["split"]).copy()
+    clean["reward_norm"] = pd.to_numeric(clean["reward_norm"], errors="coerce")
+    clean = clean[clean["reward_norm"].notna()].copy()
+
+    test_df = clean[clean["split"] == "test"].copy()
+    if test_df.empty:
+        raise ValueError("Shot test split is empty.")
+
+    resolved_dir = Path(model_dir or (REPO_ROOT / "results" / "models" / "shot"))
+    model_path = resolved_dir / "shot_epv.pt"
+    metadata_path = resolved_dir / "shot_epv_metadata.json"
+    if not model_path.exists() or not metadata_path.exists():
+        raise FileNotFoundError("Shot artifacts not found. Train the model before testing.")
+
+    with metadata_path.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    feature_columns = list(metadata.get("feature_columns") or feature_builder.feature_columns)
+
+    runtime_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    model = ShotEPVNet(n_features=len(feature_columns)).to(runtime_device)
+    payload = torch.load(model_path, map_location=runtime_device, weights_only=False)
+    if isinstance(payload, dict):
+        model.load_state_dict(payload)
+    elif isinstance(payload, ShotEPVNet):
+        model = payload.to(runtime_device)
+    else:
+        raise TypeError(f"Unsupported shot payload type: {type(payload)!r}")
+    model.eval()
+
+    x_test = test_df[feature_columns].to_numpy(dtype=float)
+    y_test = test_df["reward_norm"].to_numpy(dtype=float)
+    with torch.no_grad():
+        tensor = torch.tensor(x_test, dtype=torch.float32, device=runtime_device)
+        predictions = model(tensor).detach().cpu().numpy().reshape(-1)
+    test_mse = float(np.mean((predictions - y_test) ** 2))
+
+    report = {
+        "model_path": str(model_path),
+        "metadata_path": str(metadata_path),
+        "test_mse": test_mse,
+        "test_rows": int(len(test_df)),
+    }
+
+    report_path = REPO_ROOT / "results" / "metrics" / "shot_test_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    with report_path.open("w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
+
+    return report
+
+
+def test_shot_model(
+    dataset: pd.DataFrame,
+    model_dir: Optional[Path] = None,
+    device: Optional[str] = None,
+) -> Dict[str, object]:
+    if dataset.empty:
+        raise ValueError("Shot dataset is empty.")
+    if "split" not in dataset.columns:
+        raise ValueError("Shot dataset must contain a 'split' column.")
+
+    feature_builder = ShotFeatureBuilder()
+    required_columns = list(feature_builder.feature_columns) + ["reward_norm"]
+    clean = dataset.dropna(subset=required_columns + ["split"]).copy()
+    clean["reward_norm"] = pd.to_numeric(clean["reward_norm"], errors="coerce")
+    clean = clean[clean["reward_norm"].notna()].copy()
+
+    test_df = clean[clean["split"] == "test"].copy()
+    if test_df.empty:
+        raise ValueError("Shot test split is empty.")
+
+    resolved_dir = Path(model_dir or (REPO_ROOT / "results" / "models" / "shot"))
+    model_path = resolved_dir / "shot_epv.pt"
+    metadata_path = resolved_dir / "shot_epv_metadata.json"
+    if not model_path.exists() or not metadata_path.exists():
+        raise FileNotFoundError("Shot artifacts not found. Train the model before testing.")
+
+    with metadata_path.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    feature_columns = list(metadata.get("feature_columns") or feature_builder.feature_columns)
+
+    runtime_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    model = ShotEPVNet(n_features=len(feature_columns)).to(runtime_device)
+    payload = torch.load(model_path, map_location=runtime_device, weights_only=False)
+    if isinstance(payload, dict):
+        model.load_state_dict(payload)
+    elif isinstance(payload, ShotEPVNet):
+        model = payload.to(runtime_device)
+    else:
+        raise TypeError(f"Unsupported shot payload type: {type(payload)!r}")
+    model.eval()
+
+    x_test = test_df[feature_columns].to_numpy(dtype=float)
+    y_test = test_df["reward_norm"].to_numpy(dtype=float)
+    with torch.no_grad():
+        tensor = torch.tensor(x_test, dtype=torch.float32, device=runtime_device)
+        predictions = model(tensor).detach().cpu().numpy().reshape(-1)
+    test_mse = float(np.mean((predictions - y_test) ** 2))
+
+    report = {
+        "model_path": str(model_path),
+        "metadata_path": str(metadata_path),
+        "test_mse": test_mse,
+        "test_rows": int(len(test_df)),
+    }
+
+    report_path = REPO_ROOT / "results" / "metrics" / "shot_test_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    with report_path.open("w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
+
+    return report

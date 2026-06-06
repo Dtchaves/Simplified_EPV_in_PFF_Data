@@ -17,7 +17,7 @@ SRC_ROOT = BALL_DRIVE_ROOT.parent
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from Pass.data_utils import REPO_ROOT, discover_action_sources, get_cache_root
+from Pass.data_utils import REPO_ROOT, discover_action_sources, get_cache_root, sample_sources_by_season
 from Pass.reward_labels import PassRewardLabeler
 
 
@@ -43,6 +43,7 @@ class BallDriveDataConfig:
     train_ratio: float = 0.70
     val_ratio: float = 0.15
     test_ratio: float = 0.15
+    season_sample_ratio: Optional[float] = None
 
 
 def _extract_match_id_from_text(value: Any) -> Optional[int]:
@@ -321,16 +322,28 @@ def _carry_rows_from_source(source: Dict[str, Any]) -> pd.DataFrame:
     carries["possession_event_id"] = pd.to_numeric(carries.get("possession_id"), errors="coerce")
     carries["player_id"] = pd.to_numeric(carries.get("player_id"), errors="coerce")
     carries["team_id"] = pd.to_numeric(carries.get("team_id"), errors="coerce")
-    carries["start_frame_id"] = pd.to_numeric(carries.get("start_frame_id", carries.get("frame_id")), errors="coerce")
-    carries["end_frame_id"] = pd.to_numeric(carries.get("end_frame_id", carries.get("frame_id")), errors="coerce")
+    frame_id_series = pd.to_numeric(carries.get("frame_id"), errors="coerce")
+    elapsed_seconds_series = pd.to_numeric(carries.get("elapsed_seconds"), errors="coerce")
+    event_x_series = pd.to_numeric(carries.get("x"), errors="coerce")
+    event_y_series = pd.to_numeric(carries.get("y"), errors="coerce")
+    ball_x_series = pd.to_numeric(carries.get("ball_x"), errors="coerce").fillna(event_x_series)
+    ball_y_series = pd.to_numeric(carries.get("ball_y"), errors="coerce").fillna(event_y_series)
 
-    carries["elapsed_seconds_start"] = pd.to_numeric(carries.get("elapsed_seconds_start", carries.get("elapsed_seconds")), errors="coerce")
-    carries["elapsed_seconds_end"] = pd.to_numeric(carries.get("elapsed_seconds_end", carries.get("elapsed_seconds")), errors="coerce")
+    def _coerce_with_fallback(column_name: str, fallback_series: pd.Series) -> pd.Series:
+        if column_name not in carries.columns:
+            return fallback_series.copy()
+        return pd.to_numeric(carries[column_name], errors="coerce").fillna(fallback_series)
 
-    carries["ball_x_start"] = pd.to_numeric(carries.get("ball_x_start", carries.get("ball_x")), errors="coerce")
-    carries["ball_y_start"] = pd.to_numeric(carries.get("ball_y_start", carries.get("ball_y")), errors="coerce")
-    carries["ball_x_end"] = pd.to_numeric(carries.get("ball_x_end", carries.get("ball_x")), errors="coerce")
-    carries["ball_y_end"] = pd.to_numeric(carries.get("ball_y_end", carries.get("ball_y")), errors="coerce")
+    carries["start_frame_id"] = _coerce_with_fallback("start_frame_id", frame_id_series)
+    carries["end_frame_id"] = _coerce_with_fallback("end_frame_id", frame_id_series)
+
+    carries["elapsed_seconds_start"] = _coerce_with_fallback("elapsed_seconds_start", elapsed_seconds_series)
+    carries["elapsed_seconds_end"] = _coerce_with_fallback("elapsed_seconds_end", elapsed_seconds_series)
+
+    carries["ball_x_start"] = _coerce_with_fallback("ball_x_start", ball_x_series)
+    carries["ball_y_start"] = _coerce_with_fallback("ball_y_start", ball_y_series)
+    carries["ball_x_end"] = _coerce_with_fallback("ball_x_end", ball_x_series)
+    carries["ball_y_end"] = _coerce_with_fallback("ball_y_end", ball_y_series)
 
     carries["set_piece_normalized"] = carries.get("set_piece", pd.Series(index=carries.index)).map(_normalize_set_piece)
 
@@ -375,6 +388,11 @@ def _carry_rows_from_source(source: Dict[str, Any]) -> pd.DataFrame:
 def build_ball_drive_canonical_dataset(config: Optional[BallDriveDataConfig] = None) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     config = config or BallDriveDataConfig()
     sources = discover_ball_drive_sources(config)
+    sources, season_sampling_summary = sample_sources_by_season(
+        sources,
+        season_sample_ratio=config.season_sample_ratio,
+        split_seed=config.split_seed,
+    )
 
     chunks: List[pd.DataFrame] = []
     for source in sources:
@@ -383,7 +401,13 @@ def build_ball_drive_canonical_dataset(config: Optional[BallDriveDataConfig] = N
             chunks.append(source_rows)
 
     if not chunks:
-        return pd.DataFrame(), {"rows_total": 0, "rows_labeled": 0, "rows_excluded": 0, "source_count": len(sources)}
+        return pd.DataFrame(), {
+            "rows_total": 0,
+            "rows_labeled": 0,
+            "rows_excluded": 0,
+            "source_count": len(sources),
+            "season_sampling": season_sampling_summary,
+        }
 
     canonical = pd.concat(chunks, ignore_index=True)
     canonical = canonical.dropna(
@@ -414,6 +438,7 @@ def build_ball_drive_canonical_dataset(config: Optional[BallDriveDataConfig] = N
         "rows_excluded": int(canonical["y_success_provider"].isna().sum()),
         "excluded_outcome_count": int((canonical["success_source"] == "excluded_outcome").sum()),
         "source_count": int(len(sources)),
+        "season_sampling": season_sampling_summary,
     }
 
     return canonical, summary
@@ -620,7 +645,8 @@ def attach_reward_labels(segmented_df: pd.DataFrame, include_open_play_null: boo
         parts.append(labeled)
         source_status.append(summary)
 
-    merged = pd.concat(parts, ignore_index=False).sort_index().reset_index(drop=True)
+    concat_parts = [part.dropna(axis=1, how="all") for part in parts if not part.empty]
+    merged = pd.concat(concat_parts, ignore_index=False).sort_index().reset_index(drop=True) if concat_parts else pd.DataFrame()
     merged["reward_G"] = pd.to_numeric(merged.get("reward_label"), errors="coerce")
 
     summary = {

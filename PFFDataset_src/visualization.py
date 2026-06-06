@@ -20,7 +20,7 @@ def plot_shot_frame(
 ) -> plt.Figure:
     """
     Plot a single shot frame showing player positions and ball location.
-    
+
     Args:
         tracking_df: DataFrame with tracking data for the frame
         event_row: Series containing shot event information
@@ -31,28 +31,28 @@ def plot_shot_frame(
         show_velocity: Whether to show velocity vectors
         team_colors: Dict with team colors {'attacking': 'blue', 'defending': 'red'}
         title: Optional title for the plot
-        
+
     Returns:
         matplotlib Figure object
     """
     # Create pitch using Impect coordinate system (matches your data: -52.5 to 52.5, -34 to 34)
     pitch = Pitch(pitch_type=pitch_style, line_zorder=2)
     fig, ax = pitch.draw(figsize=figsize)
-    
+
     # Get frame data
     frame_id = event_row['frame_id']
     match_id = event_row['match_id']
     frame_data = tracking_df[(tracking_df['frame_id'] == frame_id) & (tracking_df['match_id'] == match_id)]
-    
+
     if frame_data.empty:
-        ax.text(0.5, 0.5, 'No tracking data for this frame', 
+        ax.text(0.5, 0.5, 'No tracking data for this frame',
                 transform=ax.transAxes, ha='center', va='center')
         return fig
-    
+
     # Default team colors
     if team_colors is None:
         team_colors = {'attacking': '#1f77b4', 'defending': '#ff7f0e'}
-    
+
     shooter_id = event_row.get('player_id')
 
     # Plot players
@@ -61,64 +61,64 @@ def plot_shot_frame(
         attacking_players = frame_data[frame_data['team_phase'] == 'attacking']
         if not attacking_players.empty:
 
-            ax.scatter(attacking_players['x'], attacking_players['y'], 
-                      c=team_colors['attacking'], s=150, alpha=0.7, 
+            ax.scatter(attacking_players['x'], attacking_players['y'],
+                      c=team_colors['attacking'], s=150, alpha=0.7,
                       edgecolors='black', linewidth=0.5, label='Attacking')
-            
+
             # Add player numbers
             for _, player in attacking_players.iterrows():
                 if player.get('player_id') == shooter_id:
-                    ax.scatter(player['x'], player['y'], 
-                              c=team_colors['attacking'], s=150, alpha=1, 
+                    ax.scatter(player['x'], player['y'],
+                              c=team_colors['attacking'], s=150, alpha=1,
                               edgecolors='black', linewidth=1, label='Shooter')
                 if pd.notna(player.get('shirt_number')):
-                    ax.text(player['x'], player['y'], str(int(player['shirt_number'])), 
+                    ax.text(player['x'], player['y'], str(int(player['shirt_number'])),
                            ha='center', va='center', fontsize=8, fontweight='bold',
                            color='white' if team_colors['attacking'] != 'white' else 'black')
-        
+
         # Away team
         defending_players = frame_data[frame_data['team_phase'] == 'defending']
         if not defending_players.empty:
-            ax.scatter(defending_players['x'], defending_players['y'], 
-                      c=team_colors['defending'], s=150, alpha=0.7, 
+            ax.scatter(defending_players['x'], defending_players['y'],
+                      c=team_colors['defending'], s=150, alpha=0.7,
                       edgecolors='black', linewidth=0.5, label='Defending')
-            
+
             # Add player numbers
             for _, player in defending_players.iterrows():
                 if pd.notna(player.get('shirt_number')):
-                    ax.text(player['x'], player['y'], str(int(player['shirt_number'])), 
+                    ax.text(player['x'], player['y'], str(int(player['shirt_number'])),
                            ha='center', va='center', fontsize=8, fontweight='bold',
                            color='white' if team_colors['defending'] != 'white' else 'black')
-    
+
     # Plot ball
     if show_ball:
         ball_data = frame_data[frame_data['ball_x'].notna()]
         if not ball_data.empty:
-            ax.scatter(ball_data['ball_x'].iloc[0], ball_data['ball_y'].iloc[0], 
-                      c='black', s=50, edgecolors='black', linewidth=1, 
+            ax.scatter(ball_data['ball_x'].iloc[0], ball_data['ball_y'].iloc[0],
+                      c='black', s=50, edgecolors='black', linewidth=1,
                       marker='o', label='Ball', zorder=5)
-    
+
     # Plot velocity vectors
     if show_velocity and 'vx' in frame_data.columns and 'vy' in frame_data.columns:
         # Home team velocity
         attacking_players = frame_data[frame_data['team_phase'] == 'attacking']
         if not attacking_players.empty:
-            ax.quiver(attacking_players['x'], attacking_players['y'], 
-                     attacking_players['vx'], attacking_players['vy'], 
+            ax.quiver(attacking_players['x'], attacking_players['y'],
+                     attacking_players['vx'], attacking_players['vy'],
                      color=team_colors['attacking'], alpha=0.6, scale=20, width=0.003)
-        
+
         # Away team velocity
         defending_players = frame_data[frame_data['team_phase'] == 'defending']
         if not defending_players.empty:
-            ax.quiver(defending_players['x'], defending_players['y'], 
-                     defending_players['vx'], defending_players['vy'], 
+            ax.quiver(defending_players['x'], defending_players['y'],
+                     defending_players['vx'], defending_players['vy'],
                      color=team_colors['defending'], alpha=0.6, scale=20, width=0.003)
-    
-    
+
+
     # Add legend
     if show_players or show_ball:
         ax.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    
+
     plt.tight_layout()
     return fig
 
@@ -130,46 +130,46 @@ def plot_shot_heatmap(
 ) -> plt.Figure:
     """
     Create a heatmap of shot locations.
-    
+
     Args:
         events_df: DataFrame with shot events
         pitch_style: Style of the pitch
         figsize: Figure size
-        
+
     Returns:
         matplotlib Figure object
     """
     # Filter shots
     shots = events_df[events_df['possession_type'] == 'shot'].copy()
-    
+
     if shots.empty:
         fig, ax = plt.subplots(figsize=figsize)
-        ax.text(0.5, 0.5, 'No shots found', transform=ax.transAxes, 
+        ax.text(0.5, 0.5, 'No shots found', transform=ax.transAxes,
                 ha='center', va='center')
         return fig
-    
+
     # Create pitch using Impect coordinate system
     pitch = Pitch(pitch_type='impect', line_zorder=2)
     fig, ax = pitch.draw(figsize=figsize)
-    
+
     # Create hexbin plot
     hb = ax.hexbin(shots['x'], shots['y'], gridsize=20, alpha=0.7, cmap='Reds')
-    
+
     # Add colorbar
     plt.colorbar(hb, ax=ax, label='Number of shots')
-    
+
     # Add shot points
-    ax.scatter(shots['x'], shots['y'], c='white', s=30, alpha=0.8, 
+    ax.scatter(shots['x'], shots['y'], c='white', s=30, alpha=0.8,
                edgecolors='black', linewidth=0.5)
-    
+
     # Highlight goals
-    goals = shots[shots['outcome'] == 'goal']
+    goals = shots[shots['shot_outcome'] == 'goal']
     if not goals.empty:
-        ax.scatter(goals['x'], goals['y'], c='gold', s=100, marker='*', 
+        ax.scatter(goals['x'], goals['y'], c='gold', s=100, marker='*',
                    edgecolors='black', linewidth=1, label='Goals', zorder=5)
-    
+
     ax.set_title('Shot Location Heatmap', fontsize=14, fontweight='bold')
-    
+
     if not goals.empty:
         ax.legend()
 
@@ -207,7 +207,7 @@ def plot_tensorized_frames(
         matplotlib Figure object
     """
     # Import here to avoid circular imports
-    from src.tensorizer import get_default_bins, get_uniform_bins
+    from Simplified_EPV_in_PFF_Data.PFFDataset_src_2.tensorizer import get_default_bins, get_uniform_bins
 
     # Determine bins for grid overlay
     if grid_shape is not None:

@@ -131,11 +131,20 @@ This verifies:
 
 ## Cache Behavior
 
-- Canonical enriched pass files are cached under `data/processed/cache/canonical/`
-- PP and PS share a tensor cache family under `data/processed/cache/pp_ps/`
-- PE-Success and PE-Missed share an EPV tensor cache family under `data/processed/cache/epv/`
-- The first run for a source file builds the cache; repeated runs reuse the cached tensors for the same source and dependency state
-- EPV cache entries are keyed by the PP checkpoint fingerprint, so retraining or replacing the PP model invalidates dependent EPV caches automatically
+- By default, Pass dataloaders use a small shared cache policy: canonical enriched pass files are cached under `data/processed/cache/canonical/`, while large tensor-shard caches are skipped.
+- The canonical cache is reusable across PP, PS, PE-Success, PE-Missed, and Pass audit scripts because it stores source-level pass rows after PFF triplet canonicalization and outcome enrichment.
+- Match split manifests under `data/processed/cache/splits/` are tiny and remain useful for consistent train/validation/test assignment.
+- PP and PS can optionally share a large tensor cache family under `data/processed/cache/pp_ps/` with artifact stem `pass_outcome_tensors`.
+- PE-Success and PE-Missed can optionally write large EPV tensor shards under `data/processed/cache/epv/` with separate success/missed artifact stems.
+- EPV tensor cache entries are keyed by the PP checkpoint fingerprint, so retraining or replacing the PP model invalidates dependent EPV caches automatically.
+- Set `PFF_DISABLE_CACHE=1` to disable all caches. Set `PFF_CACHE_ENABLED=1` to enable all caches, including the large tensor-shard caches.
+
+## Memory-Friendly Match Sampling
+
+- Pass dataloaders and the BallDrive, Shot, baseline xG, and ActionSelection match-triplet builders sample a balanced fraction of each season before loading source matches.
+- The default `PFF_SEASON_SAMPLE_RATIO` is `0.5`, so half of each discovered season is loaded by default.
+- Set `PFF_SEASON_SAMPLE_RATIO=1` to use all matches, or set another value such as `0.25` for a smaller run.
+- The Python parameter is `season_sample_ratio`; an explicit dataloader/config value overrides the environment default.
 
 ## Complete Training Sequence
 

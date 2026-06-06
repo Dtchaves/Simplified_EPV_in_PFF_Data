@@ -128,27 +128,98 @@ def pff_frames_to_dataframe(frames, smoothed=True, **kwargs):
     return metadata_df, players_ball_df
 
 def change_events_side(players_df: pd.DataFrame, events_df: pd.DataFrame, homeTeamStartLeft: bool):
+    """Normalize tracking coordinates from the acting team's perspective.
 
-    home_events = events_df[events_df['team_side'] == 'home']['frame_id'].unique()
-    away_events = events_df[events_df['team_side'] == 'away']['frame_id'].unique()
+    Older code only normalized frames whose frame_id was exactly an event start frame,
+    leaving continuous tracking mostly unnormalized and team_phase mostly null. This
+    version assigns an acting side to frames covered by event intervals and flips the
+    whole frame whenever the acting team is attacking left-to-right only after flipping.
+    Velocity and acceleration columns are transformed with the same sign change as
+    their coordinate axes; vertical ball components are intentionally left unchanged.
+    """
+    players_df = players_df.copy()
+    if players_df.empty or events_df.empty:
+        players_df['team_phase'] = None
+        return players_df
 
-    if homeTeamStartLeft:
-        mask_flip = (
-            ((players_df['period'] == 2) & (players_df['frame_id'].isin(home_events))) |
-            ((players_df['period'] == 1) & (players_df['frame_id'].isin(away_events)))
+    for col in ['match_id', 'frame_id', 'period']:
+        if col in players_df.columns:
+            players_df[col] = pd.to_numeric(players_df[col], errors='coerce')
+    for col in ['match_id', 'start_frame_id', 'end_frame_id', 'frame_id', 'period']:
+        if col in events_df.columns:
+            events_df[col] = pd.to_numeric(events_df[col], errors='coerce')
+
+    frame_state_rows = []
+    unique_frames = players_df[['match_id', 'period', 'frame_id']].drop_duplicates().dropna()
+    for _, event in events_df.dropna(subset=['match_id', 'period', 'team_side']).iterrows():
+        match_id = event.get('match_id')
+        period = event.get('period')
+        acting_side = event.get('team_side')
+        start_frame = event.get('start_frame_id', event.get('frame_id'))
+        end_frame = event.get('end_frame_id', start_frame)
+        if pd.isna(start_frame):
+            continue
+        if pd.isna(end_frame):
+            end_frame = start_frame
+        lo, hi = sorted((int(start_frame), int(end_frame)))
+        frame_subset = unique_frames[
+            (unique_frames['match_id'] == match_id)
+            & (unique_frames['period'] == period)
+            & (unique_frames['frame_id'] >= lo)
+            & (unique_frames['frame_id'] <= hi)
+        ]
+        if frame_subset.empty:
+            # Fall back to the event frame only if no interval frames are present.
+            frame_subset = unique_frames[
+                (unique_frames['match_id'] == match_id)
+                & (unique_frames['period'] == period)
+                & (unique_frames['frame_id'] == int(start_frame))
+            ]
+        for _, frame in frame_subset.iterrows():
+            frame_state_rows.append({
+                'match_id': int(frame['match_id']),
+                'period': int(frame['period']),
+                'frame_id': int(frame['frame_id']),
+                'acting_team_side': acting_side,
+            })
+
+    if frame_state_rows:
+        frame_state = pd.DataFrame(frame_state_rows).drop_duplicates(
+            subset=['match_id', 'period', 'frame_id'], keep='last'
         )
+        players_df = players_df.merge(frame_state, on=['match_id', 'period', 'frame_id'], how='left')
     else:
-        mask_flip = (
-            ((players_df['period'] == 1) & (players_df['frame_id'].isin(home_events))) |
-            ((players_df['period'] == 2) & (players_df['frame_id'].isin(away_events)))
-        )
-    
-    players_df.loc[mask_flip, ['x', 'y', 'ball_x', 'ball_y']] *= -1
+        players_df['acting_team_side'] = None
+
+    acting = players_df['acting_team_side']
+    if homeTeamStartLeft:
+        mask_flip = ((players_df['period'] == 2) & acting.eq('home')) | ((players_df['period'] == 1) & acting.eq('away'))
+    else:
+        mask_flip = ((players_df['period'] == 1) & acting.eq('home')) | ((players_df['period'] == 2) & acting.eq('away'))
+
+    flip_cols = [
+        col
+        for col in [
+            'x',
+            'y',
+            'ball_x',
+            'ball_y',
+            'vx',
+            'vy',
+            'ax',
+            'ay',
+            'ball_vx',
+            'ball_vy',
+            'ball_ax',
+            'ball_ay',
+        ]
+        if col in players_df.columns
+    ]
+    if flip_cols:
+        players_df.loc[mask_flip, flip_cols] = players_df.loc[mask_flip, flip_cols] * -1
 
     players_df['team_phase'] = None
-    players_df.loc[(players_df['team']=='home') & (players_df['frame_id'].isin(home_events)), 'team_phase'] = 'attacking'
-    players_df.loc[(players_df['team']=='away') & (players_df['frame_id'].isin(away_events)), 'team_phase'] = 'attacking'
-    players_df.loc[(players_df['team']=='home') & (players_df['frame_id'].isin(away_events)), 'team_phase'] = 'defending'
-    players_df.loc[(players_df['team']=='away') & (players_df['frame_id'].isin(home_events)), 'team_phase'] = 'defending'
+    players_df.loc[players_df['team'].eq(players_df['acting_team_side']), 'team_phase'] = 'attacking'
+    players_df.loc[players_df['acting_team_side'].notna() & ~players_df['team'].eq(players_df['acting_team_side']), 'team_phase'] = 'defending'
 
-    return players_df
+    return players_df.drop(columns=['acting_team_side'])

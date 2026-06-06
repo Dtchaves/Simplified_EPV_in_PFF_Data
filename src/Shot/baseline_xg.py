@@ -10,10 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 
-from Pass.data_utils import REPO_ROOT, discover_action_sources
+from Pass.data_utils import REPO_ROOT, discover_action_sources, sample_sources_by_season
 
 
 PITCH_LENGTH = 105.0
@@ -31,6 +32,8 @@ class BaselineXGConfig:
     source_format: str = "pff_match_triplets"
     orientation_mode: str = "attack_right"
     flip_away_team_coordinates: bool = True
+    split_seed: int = 42
+    season_sample_ratio: Optional[float] = None
 
 
 @dataclass
@@ -118,6 +121,11 @@ def build_baseline_xg_dataset(
 ) -> pd.DataFrame:
     config = config or BaselineXGConfig()
     sources = discover_action_sources(config.source_root, source_format=config.source_format, prefer_parquet=True)
+    sources, _ = sample_sources_by_season(
+        sources,
+        season_sample_ratio=config.season_sample_ratio,
+        split_seed=config.split_seed,
+    )
 
     rows: List[Dict[str, Any]] = []
     for source in sources:
@@ -222,11 +230,16 @@ def train_baseline_xg(
     scaler = StandardScaler()
     x_scaled = scaler.fit_transform(x)
 
-    model = xgb_module.XGBClassifier(
-        objective="binary:logistic",
-        eval_metric="logloss",
-        use_label_encoder=False,
-    )
+    model_kwargs = {
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "use_label_encoder": False,
+    }
+    if torch.cuda.is_available():
+        model_kwargs["device"] = "cuda"
+        model_kwargs["tree_method"] = "hist"
+
+    model = xgb_module.XGBClassifier(**model_kwargs)
 
     grid = GridSearchCV(
         model,

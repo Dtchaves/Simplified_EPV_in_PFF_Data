@@ -15,7 +15,7 @@ def plot_loss(train_losses, val_losses,epoch,model_name,path_save_plot):
     ax.set_xlabel("Epochs", fontsize="16")
     ax.set_ylabel("Loss", fontsize="16")
     ax.set_title(f"Training and Validation Loss", fontsize="16")
-    
+
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
     plt.legend(fontsize=12)
@@ -31,11 +31,11 @@ def plot_loss(train_losses, val_losses,epoch,model_name,path_save_plot):
     ax.tick_params(width=0.5)
 
     ax.set_facecolor("whitesmoke")
-    model = model_name + ".png" 
+    model = model_name + ".png"
     save_path = os.path.join(path_save_plot, model)
     plt.savefig(save_path, dpi=300)
     plt.close()
-    
+
 
 
 
@@ -49,11 +49,13 @@ class ToSoccerMapTensor:
         The dimensions of the pitch in the spatial representation.
     """
 
-    def __init__(self, dim=(68, 104)):
+    def __init__(self, dim=(68, 104), velocity_scale=10.0):
         assert len(dim) == 2
         self.y_bins, self.x_bins = dim
         self._last_att_lines = None
         self._last_def_lines = None
+        self.pitch_diagonal = float(np.hypot(self.x_bins - 1, self.y_bins - 1))
+        self.velocity_scale = float(velocity_scale)
 
     @staticmethod
     def _safe_float(value):
@@ -130,7 +132,7 @@ class ToSoccerMapTensor:
             'S': 0,
             'G': 0,
             'I': 0,
-            
+
         }
         start_x, start_y, end_x, end_y = (
             sample["ball_x_start"],
@@ -232,18 +234,21 @@ class ToSoccerMapTensor:
                 matrix[4, y_idx, x_idx] += vx_val
                 matrix[5, y_idx, x_idx] += vy_val
 
+        # Keep PP/PS channels on comparable scales so the model does not collapse to the class prior.
+        matrix[2:6, :, :] = np.clip(matrix[2:6, :, :] / self.velocity_scale, -1.0, 1.0)
+
         # Table-5 PP/PS channels (shared):
         # 1 att loc, 2 def loc, 3 att vx, 4 att vy, 5 def vx, 6 def vy,
         # 7 angle-to-goal, 8 sin(angle-to-ball), 9 cos(angle-to-ball),
         # 10 sin(angle-to-carrier-velocity), 11 cos(angle-to-carrier-velocity),
         # 12 distance-to-goal, 13 distance-to-ball.
-        matrix[6, :, :] = angle_to_goal
+        matrix[6, :, :] = angle_to_goal / np.pi
         matrix[7, :, :] = sin_angle_to_ball
         matrix[8, :, :] = cos_angle_to_ball
         matrix[9, :, :] = sin_angle_to_carrier_velocity
         matrix[10, :, :] = cos_angle_to_carrier_velocity
-        matrix[11, :, :] = distance_to_goal
-        matrix[12, :, :] = distance_to_ball
+        matrix[11, :, :] = np.clip(distance_to_goal / self.pitch_diagonal, 0.0, 1.0)
+        matrix[12, :, :] = np.clip(distance_to_ball / self.pitch_diagonal, 0.0, 1.0)
 
         mask = np.zeros((1, self.y_bins, self.x_bins))
         end_ball_coo = np.array([[end_x, end_y]])

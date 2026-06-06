@@ -133,9 +133,9 @@ def run_boundary_and_open_play_checks() -> None:
 def run_reward_checkpoint() -> None:
     run_boundary_and_open_play_checks()
 
-    sources = discover_pass_sources("data/passes", source_format="auto")
+    sources = discover_pass_sources("data/processed/pff_match_triplets", source_format="auto")
     if not sources:
-        raise FileNotFoundError("No canonical pass sources found under data/passes.")
+        raise FileNotFoundError("No canonical pass sources found under data/processed/pff_match_triplets.")
 
     labeler = PassRewardLabeler(
         event_root=ROOT / "data/raw/event",

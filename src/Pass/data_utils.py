@@ -2,7 +2,9 @@
 Shared utilities for data discovery and loading across all model dataloaders.
 
 This module standardizes how data files are discovered and loaded, supporting:
-- Recursive discovery from data/passes root with season subfolder support
+- Recursive discovery from the processed PFF triplet root with season subfolder support
+- A shared canonical pass cache that is reusable across Pass model families
+- Optional tensor-shard caches for model-specific preprocessing shortcuts
 - Parquet-first priority with optional CSV fallback
 - Schema validation with clear error messages
 """
@@ -23,18 +25,32 @@ PASS_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Canonical data root for all models
-DEFAULT_DATA_ROOT = "data/passes"
+DEFAULT_DATA_ROOT = "data/processed/pff_match_triplets"
 DEFAULT_EVENT_ROOT = "data/raw/event"
 DEFAULT_CACHE_ROOT = "data/processed/cache"
-CANONICAL_CACHE_VERSION = "v1"
-PP_PS_CACHE_VERSION = "v1"
-EPV_CACHE_VERSION = "v1"
-PFF_ADAPTER_VERSION = "v1"
+CANONICAL_CACHE_VERSION = "v3_velocity_orientation_fix"
+PP_PS_CACHE_VERSION = "v5_velocity_orientation_fix"
+EPV_CACHE_VERSION = "v3_velocity_orientation_fix"
+PFF_ADAPTER_VERSION = "v4_velocity_orientation_fix"
 PFF_TRIPLET_REQUIRED_FILES = ("tracking.parquet", "events.parquet", "players.parquet")
+DEFAULT_SEASON_SAMPLE_RATIO = 1.0
 
 # Supported pass outcome labels used by model tensorizers
 PASS_OUTCOME_ALLOWED = {"C", "D", "B", "O", "S", "G", "I"}
-NULL_EQUIVALENT_TOKENS = {"", "nan", "none", "null", "na", "n/a", "nat"}
+NULL_EQUIVALENT_TOKENS = {"", "nan", "none", "null", "na", "n/a", "nat", "<na>"}
+
+
+def _clean_null_equivalents(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace string null tokens with pandas NA without changing numeric columns."""
+    df = df.copy()
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].map(
+                lambda value: pd.NA
+                if value is None or (isinstance(value, str) and value.strip().lower() in NULL_EQUIVALENT_TOKENS)
+                else value
+            )
+    return df
 
 # In-process cache to avoid loading the same game JSON multiple times.
 _PASS_OUTCOME_INDEX_CACHE: Dict[Tuple[str, int], pd.DataFrame] = {}
@@ -89,6 +105,43 @@ def _resolve_data_path(directory: Union[str, Path]) -> Path:
     return resolved.resolve()
 
 
+def _parse_env_bool(value: Optional[str]) -> Optional[bool]:
+    if value is None:
+        return None
+
+    token = value.strip().lower()
+    if token in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if token in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return None
+
+
+def _parse_env_float(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+
+    try:
+        return float(value.strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _cache_enabled(cache_enabled: Optional[bool] = None, default: bool = False) -> bool:
+    if cache_enabled is not None:
+        return bool(cache_enabled)
+
+    disable_env = _parse_env_bool(os.getenv("PFF_DISABLE_CACHE"))
+    if disable_env is True:
+        return False
+
+    enabled_env = _parse_env_bool(os.getenv("PFF_CACHE_ENABLED"))
+    if enabled_env is not None:
+        return enabled_env
+
+    return default
+
+
 def _extract_numeric_match_id(raw_value: Any) -> Optional[int]:
     if raw_value is None:
         return None
@@ -105,6 +158,92 @@ def _extract_numeric_match_id(raw_value: Any) -> Optional[int]:
     if not matches:
         return None
     return int(matches[-1])
+
+
+def _extract_season_key(source: ActionSource) -> str:
+    tokens: List[str] = []
+    source_path = source.get("source_path")
+    if source_path is not None:
+        tokens.extend(Path(str(source_path)).parts)
+    source_name = source.get("source_name")
+    if source_name is not None:
+        tokens.append(str(source_name))
+
+    patterns = (
+        re.compile(r"^\d{2}-\d{2}$"),
+        re.compile(r"^\d{4}[_-]\d{4}$"),
+        re.compile(r"\b\d{4}[_-]\d{4}\b"),
+        re.compile(r"\b\d{2}-\d{2}\b"),
+    )
+
+    for token in tokens:
+        for pattern in patterns:
+            match = pattern.search(token)
+            if match:
+                return match.group(0)
+
+    return "unknown"
+
+
+def _resolve_season_sample_ratio(season_sample_ratio: Optional[float]) -> float:
+    if season_sample_ratio is not None:
+        ratio = float(season_sample_ratio)
+    else:
+        env_ratio = _parse_env_float(os.getenv("PFF_SEASON_SAMPLE_RATIO"))
+        ratio = DEFAULT_SEASON_SAMPLE_RATIO if env_ratio is None else env_ratio
+
+    if not 0.0 < ratio <= 1.0:
+        raise ValueError("season_sample_ratio must be greater than 0 and less than or equal to 1.")
+    return ratio
+
+
+def sample_sources_by_season(
+    sources: List[ActionSource],
+    season_sample_ratio: Optional[float] = None,
+    split_seed: int = 42,
+) -> Tuple[List[ActionSource], Dict[str, Any]]:
+    """Sample the same fraction of logical sources from each season group."""
+    ratio = _resolve_season_sample_ratio(season_sample_ratio)
+    season_groups: Dict[str, List[int]] = {}
+    for index, source in enumerate(sources):
+        season_groups.setdefault(_extract_season_key(source), []).append(index)
+
+    if ratio >= 1.0:
+        return list(sources), {
+            "enabled": False,
+            "season_sample_ratio": ratio,
+            "source_count_before_sampling": int(len(sources)),
+            "source_count_after_sampling": int(len(sources)),
+            "seasons": {
+                season: {"available": int(len(indices)), "selected": int(len(indices))}
+                for season, indices in sorted(season_groups.items())
+            },
+        }
+
+    selected_indices = set()
+    season_summary: Dict[str, Dict[str, int]] = {}
+    for season, indices in sorted(season_groups.items()):
+        seed_input = f"{int(split_seed)}:{season}"
+        season_seed = int(hashlib.sha1(seed_input.encode("utf-8")).hexdigest()[:16], 16)
+        rng = random.Random(season_seed)
+        shuffled_indices = list(indices)
+        rng.shuffle(shuffled_indices)
+        selected_count = max(1, int(round(ratio * len(shuffled_indices))))
+        selected_count = min(selected_count, len(shuffled_indices))
+        selected_indices.update(shuffled_indices[:selected_count])
+        season_summary[season] = {
+            "available": int(len(indices)),
+            "selected": int(selected_count),
+        }
+
+    sampled_sources = [source for index, source in enumerate(sources) if index in selected_indices]
+    return sampled_sources, {
+        "enabled": True,
+        "season_sample_ratio": ratio,
+        "source_count_before_sampling": int(len(sources)),
+        "source_count_after_sampling": int(len(sampled_sources)),
+        "seasons": season_summary,
+    }
 
 
 def _normalize_source_format(source_format: Optional[str]) -> str:
@@ -328,6 +467,153 @@ def split_sources_by_mode(
         "train_source_count": int(len(train_sources)),
         "val_source_count": int(len(val_sources)),
         "match_count": int(len(unique_keys)),
+    }
+
+
+def split_sources_train_val_test_by_mode(
+    sources: List[ActionSource],
+    train_ratio: Optional[float] = None,
+    split_mode: str = "row",
+    split_seed: int = 42,
+    split_manifest_path: Optional[Union[str, Path]] = None,
+    split_ratio: Optional[float] = None,
+    season_sample_ratio: Optional[float] = None,
+) -> Tuple[List[ActionSource], List[ActionSource], List[ActionSource], Dict[str, Any]]:
+    """Split logical sources into train/validation/test partitions.
+
+    row mode preserves backward compatibility by returning all sources as train.
+    match mode assigns all samples from each match_id to train, validation, or test,
+    and persists those assignments when a manifest path is provided.
+    """
+    mode = str(split_mode).strip().lower()
+    if mode not in {"row", "match"}:
+        raise ValueError("split_mode must be one of: 'row', 'match'")
+
+    if train_ratio is None:
+        train_ratio = split_ratio
+    if train_ratio is None:
+        raise ValueError("split_sources_train_val_test_by_mode requires train_ratio or split_ratio")
+
+    if mode == "row":
+        return list(sources), [], [], {
+            "split_mode": "row",
+            "manifest_path": None,
+            "train_source_count": int(len(sources)),
+            "val_source_count": 0,
+            "test_source_count": 0,
+        }
+
+    if not sources:
+        return [], [], [], {
+            "split_mode": "match_train_val_test",
+            "manifest_path": None,
+            "train_source_count": 0,
+            "val_source_count": 0,
+            "test_source_count": 0,
+        }
+
+    source_count_before_sampling = int(len(sources))
+    sources, season_sampling_summary = sample_sources_by_season(
+        sources,
+        season_sample_ratio=season_sample_ratio,
+        split_seed=split_seed,
+    )
+
+    manifest_path: Optional[Path] = None
+    if split_manifest_path is not None:
+        manifest_path = Path(split_manifest_path)
+        if not manifest_path.is_absolute():
+            manifest_path = (REPO_ROOT / manifest_path).resolve()
+
+    source_keys: List[str] = []
+    source_to_key: Dict[str, str] = {}
+    for source in sources:
+        match_id = source.get("match_id")
+        key = str(int(match_id)) if match_id is not None else str(source.get("source_name") or source.get("source_path"))
+        source_path = str(source.get("source_path"))
+        source_to_key[source_path] = key
+        source_keys.append(key)
+
+    unique_keys = sorted(set(source_keys))
+    assignment_map: Dict[str, str] = {}
+
+    if manifest_path is not None and manifest_path.exists():
+        manifest = load_cache_manifest(manifest_path)
+        if manifest is not None and manifest.get("split_mode") == "match_train_val_test":
+            stored_assignments = manifest.get("match_assignments", {})
+            candidate_map = {str(key): str(value) for key, value in stored_assignments.items()}
+            allowed_values = {"train", "val", "test"}
+            if all(candidate_map.get(key) in allowed_values for key in unique_keys):
+                assignment_map = {key: candidate_map[key] for key in unique_keys}
+
+    if not assignment_map:
+        rng = random.Random(int(split_seed))
+        shuffled_keys = list(unique_keys)
+        rng.shuffle(shuffled_keys)
+
+        key_count = len(shuffled_keys)
+        if key_count == 1:
+            train_count = 1
+            val_count = 0
+            test_count = 0
+        elif key_count == 2:
+            train_count = 1
+            val_count = 0
+            test_count = 1
+        else:
+            train_count = int(round(float(train_ratio) * key_count))
+            train_count = min(max(train_count, 1), key_count - 2)
+            remaining = key_count - train_count
+            val_count = max(1, remaining // 2)
+            test_count = remaining - val_count
+            if test_count == 0:
+                test_count = 1
+                val_count = remaining - test_count
+
+        assignment_map = {}
+        for index, key in enumerate(shuffled_keys):
+            if index < train_count:
+                assignment_map[key] = "train"
+            elif index < train_count + val_count:
+                assignment_map[key] = "val"
+            else:
+                assignment_map[key] = "test"
+
+        if manifest_path is not None:
+            write_cache_manifest(
+                manifest_path,
+                {
+                    "split_mode": "match_train_val_test",
+                    "train_ratio": float(train_ratio),
+                    "split_seed": int(split_seed),
+                    "match_assignments": assignment_map,
+                },
+            )
+
+    train_sources: List[ActionSource] = []
+    val_sources: List[ActionSource] = []
+    test_sources: List[ActionSource] = []
+    for source in sources:
+        source_path = str(source.get("source_path"))
+        key = source_to_key.get(source_path)
+        assignment = assignment_map.get(key, "train")
+        if assignment == "val":
+            val_sources.append(source)
+        elif assignment == "test":
+            test_sources.append(source)
+        else:
+            train_sources.append(source)
+
+    return train_sources, val_sources, test_sources, {
+        "split_mode": "match_train_val_test",
+        "manifest_path": str(manifest_path) if manifest_path is not None else None,
+        "train_source_count": int(len(train_sources)),
+        "val_source_count": int(len(val_sources)),
+        "test_source_count": int(len(test_sources)),
+        "match_count": int(len(unique_keys)),
+        "source_count_before_sampling": source_count_before_sampling,
+        "source_count_after_sampling": int(len(sources)),
+        "season_sampling": season_sampling_summary,
     }
 
 
@@ -598,11 +884,34 @@ def load_or_build_canonical_cache(
     source_filename: Optional[str] = None,
     event_root: Optional[str] = None,
     cache_root: Optional[Union[str, Path]] = None,
+    cache_enabled: Optional[bool] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Load a canonical enriched dataframe from cache, or build it on miss."""
     source = Path(source_path)
     if not source.is_absolute():
         source = (REPO_ROOT / source).resolve()
+
+    dependency_state = {
+        "event_root": str(Path(event_root).as_posix()) if event_root is not None else DEFAULT_EVENT_ROOT,
+    }
+
+    if not _cache_enabled(cache_enabled, default=True):
+        df = load_parquet_with_fallback(source)
+        validate_schema(df, required_columns, source_file=source_filename or source.name)
+        enriched_df, merge_summary = enrich_pass_outcome_type(
+            df,
+            source_filename=source_filename or source.name,
+            event_root=event_root,
+            source_path=source,
+        )
+        return enriched_df, {
+            "cache_hit": False,
+            "cache_data_path": None,
+            "cache_manifest_path": None,
+            "source_path": str(source),
+            "rows_total": int(len(enriched_df)),
+            "merge_summary": merge_summary,
+        }
 
     canonical_data_path, manifest_path = get_cache_artifact_paths(
         source_path=source,
@@ -612,9 +921,6 @@ def load_or_build_canonical_cache(
         cache_root=cache_root,
     )
     manifest = load_cache_manifest(manifest_path)
-    dependency_state = {
-        "event_root": str(Path(event_root).as_posix()) if event_root is not None else DEFAULT_EVENT_ROOT,
-    }
 
     if canonical_data_path.exists() and is_cache_manifest_current(
         manifest,
@@ -799,8 +1105,8 @@ def _build_wide_snapshots_from_tracking(actions_df: pd.DataFrame, tracking_df: p
 
 
 def _canonicalize_pff_triplet_source(source: ActionSource) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    events_df = pd.read_parquet(source["events_path"])
-    tracking_df = pd.read_parquet(source["tracking_path"])
+    events_df = _clean_null_equivalents(pd.read_parquet(source["events_path"]))
+    tracking_df = _clean_null_equivalents(pd.read_parquet(source["tracking_path"]))
 
     if "match_id" not in events_df.columns:
         raise ValueError("PFF events.parquet missing required column: match_id")
@@ -847,18 +1153,29 @@ def _canonicalize_pff_triplet_source(source: ActionSource) -> Tuple[pd.DataFrame
     frame_source_col = "start_frame_id" if "start_frame_id" in pass_events.columns else "frame_id"
     pass_events["frame_id"] = pd.to_numeric(pass_events.get(frame_source_col), errors="coerce").astype("Int64")
 
-    pass_events["ball_x_start"] = pd.to_numeric(
-        pass_events.get("ball_x_start", pass_events.get("ball_x")), errors="coerce"
-    )
-    pass_events["ball_y_start"] = pd.to_numeric(
-        pass_events.get("ball_y_start", pass_events.get("ball_y")), errors="coerce"
-    )
-    pass_events["ball_x_end"] = pd.to_numeric(
-        pass_events.get("ball_x_end", pass_events.get("ball_x")), errors="coerce"
-    )
-    pass_events["ball_y_end"] = pd.to_numeric(
-        pass_events.get("ball_y_end", pass_events.get("ball_y")), errors="coerce"
-    )
+    ball_x = pd.to_numeric(pass_events.get("ball_x"), errors="coerce")
+    ball_y = pd.to_numeric(pass_events.get("ball_y"), errors="coerce")
+
+    pass_events["ball_x_start"] = pd.to_numeric(pass_events.get("ball_x_start"), errors="coerce")
+    pass_events["ball_y_start"] = pd.to_numeric(pass_events.get("ball_y_start"), errors="coerce")
+    pass_events["ball_x_end"] = pd.to_numeric(pass_events.get("ball_x_end"), errors="coerce")
+    pass_events["ball_y_end"] = pd.to_numeric(pass_events.get("ball_y_end"), errors="coerce")
+
+    # Start-coordinate fallbacks are acceptable because event x/y is the ball carrier
+    # location. End-coordinate fallbacks to ball_x or x/y are not acceptable: they
+    # leak the start location into the pass-selection target. Endpoints must come from
+    # processed ball end tracking or target/receiver player location in dataset.py.
+    pass_events["ball_x_start"] = pass_events["ball_x_start"].fillna(ball_x)
+    pass_events["ball_y_start"] = pass_events["ball_y_start"].fillna(ball_y)
+
+    if "x" in pass_events.columns:
+        pass_events["ball_x_start"] = pass_events["ball_x_start"].fillna(
+            pd.to_numeric(pass_events["x"], errors="coerce")
+        )
+    if "y" in pass_events.columns:
+        pass_events["ball_y_start"] = pass_events["ball_y_start"].fillna(
+            pd.to_numeric(pass_events["y"], errors="coerce")
+        )
 
     pass_events["pass_outcome_type"] = pass_events.get("pass_outcome", pd.Series(index=pass_events.index))
     if "cross_outcome" in pass_events.columns:
@@ -874,6 +1191,13 @@ def _canonicalize_pff_triplet_source(source: ActionSource) -> Tuple[pd.DataFrame
     rows_total = int(len(events))
     rows_pass = int(len(pass_events))
     rows_missing_outcome = int(pass_events["pass_outcome_type"].isna().sum())
+
+    endpoint_distance = (
+        (pass_events["ball_x_end"] - pass_events["ball_x_start"]) ** 2
+        + (pass_events["ball_y_end"] - pass_events["ball_y_start"]) ** 2
+    ) ** 0.5
+    rows_missing_endpoint = int(pass_events[["ball_x_end", "ball_y_end"]].isna().any(axis=1).sum())
+    rows_endpoint_near_start = int(((endpoint_distance <= 0.5) & endpoint_distance.notna()).sum())
 
     canonical_df = pass_events.dropna(
         subset=[
@@ -891,6 +1215,12 @@ def _canonicalize_pff_triplet_source(source: ActionSource) -> Tuple[pd.DataFrame
         ]
     ).copy()
 
+    canonical_endpoint_distance = (
+        (canonical_df["ball_x_end"] - canonical_df["ball_x_start"]) ** 2
+        + (canonical_df["ball_y_end"] - canonical_df["ball_y_start"]) ** 2
+    ) ** 0.5
+    canonical_df = canonical_df[canonical_endpoint_distance > 0.5].copy()
+
     canonical_df = _build_wide_snapshots_from_tracking(canonical_df, tracking_df)
 
     canonical_df["game_id"] = canonical_df["game_id"].astype("Int64")
@@ -903,6 +1233,8 @@ def _canonicalize_pff_triplet_source(source: ActionSource) -> Tuple[pd.DataFrame
         "rows_total": rows_total,
         "rows_pass_events": rows_pass,
         "rows_missing_outcome": rows_missing_outcome,
+        "rows_missing_endpoint": rows_missing_endpoint,
+        "rows_endpoint_near_start": rows_endpoint_near_start,
         "rows_kept": int(len(canonical_df)),
     }
     return canonical_df, summary
@@ -915,9 +1247,11 @@ def load_or_build_canonical_pass_cache(
     event_root: Optional[str] = None,
     cache_root: Optional[Union[str, Path]] = None,
     source_format: str = PASS_SOURCE_FORMAT_AUTO,
+    cache_enabled: Optional[bool] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Load canonical pass rows from legacy file or PFF match-triplet source."""
     normalized_format = _normalize_source_format(source_format)
+    cache_is_enabled = _cache_enabled(cache_enabled, default=True)
 
     if isinstance(source, dict):
         logical_source = dict(source)
@@ -942,10 +1276,28 @@ def load_or_build_canonical_pass_cache(
             source_filename=source_filename or logical_source.get("source_name"),
             event_root=event_root,
             cache_root=cache_root,
+            cache_enabled=cache_is_enabled,
         )
 
     if source_kind != PASS_SOURCE_FORMAT_PFF:
         raise ValueError(f"Unsupported source_kind for canonical loader: {source_kind}")
+
+    if not cache_is_enabled:
+        canonical_df, merge_summary = _canonicalize_pff_triplet_source(logical_source)
+        validate_schema(
+            canonical_df,
+            required_columns + ["pass_outcome_type"],
+            source_file=source_filename or logical_source.get("source_name"),
+        )
+        return canonical_df, {
+            "cache_hit": False,
+            "cache_data_path": None,
+            "cache_manifest_path": None,
+            "source_path": str(logical_source["source_path"]),
+            "source_kind": PASS_SOURCE_FORMAT_PFF,
+            "rows_total": int(len(canonical_df)),
+            "merge_summary": merge_summary,
+        }
 
     canonical_data_path, manifest_path = get_cache_artifact_paths(
         source_path=logical_source["source_path"],
@@ -1022,8 +1374,12 @@ def load_tensor_cache(
     cache_version: str,
     dependencies: Optional[Dict[str, Any]] = None,
     cache_root: Optional[Union[str, Path]] = None,
+    cache_enabled: Optional[bool] = None,
 ) -> Optional[Dict[str, Any]]:
     """Load a tensor shard if its manifest is still valid for the source file."""
+    if not _cache_enabled(cache_enabled, default=False):
+        return None
+
     data_path, manifest_path = get_cache_artifact_paths(
         source_path=source_path,
         cache_family=cache_family,
@@ -1050,8 +1406,16 @@ def save_tensor_cache(
     payload: Dict[str, Any],
     dependencies: Optional[Dict[str, Any]] = None,
     cache_root: Optional[Union[str, Path]] = None,
+    cache_enabled: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Persist a tensor shard and a matching manifest for cache-first dataloaders."""
+    if not _cache_enabled(cache_enabled, default=False):
+        result = dict(payload)
+        result["cache_data_path"] = None
+        result["cache_manifest_path"] = None
+        result["cache_hit"] = False
+        return result
+
     data_path, manifest_path = get_cache_artifact_paths(
         source_path=source_path,
         cache_family=cache_family,

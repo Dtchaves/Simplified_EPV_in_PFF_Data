@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from Pass.data_utils import REPO_ROOT, discover_action_sources
+from Pass.data_utils import REPO_ROOT, discover_action_sources, sample_sources_by_season
 from Pass.reward_labels import PassRewardLabeler
 
 from .baseline_xg import BaselineXGArtifacts, load_baseline_xg
@@ -24,6 +24,7 @@ class ShotDataConfig:
     train_ratio: float = 0.70
     val_ratio: float = 0.15
     test_ratio: float = 0.15
+    season_sample_ratio: Optional[float] = None
 
 
 def _normalize_tracking_path(source: Dict[str, Any]) -> Optional[Path]:
@@ -104,6 +105,19 @@ def apply_match_splits(shot_df: pd.DataFrame, manifest: Dict[str, Any]) -> pd.Da
     return result
 
 
+def normalize_processed_shot_ids(shot_df: pd.DataFrame) -> pd.DataFrame:
+    result = shot_df.copy()
+    aliases = {
+        "game_id": "match_id",
+        "game_event_id": "event_id",
+        "possession_event_id": "possession_id",
+    }
+    for canonical, source in aliases.items():
+        if canonical not in result.columns and source in result.columns:
+            result[canonical] = result[source]
+    return result
+
+
 def build_shot_epv_dataset(
     config: Optional[ShotDataConfig] = None,
     baseline_xg_artifacts: Optional[BaselineXGArtifacts] = None,
@@ -112,6 +126,11 @@ def build_shot_epv_dataset(
     config = config or ShotDataConfig()
     sources = discover_action_sources(config.source_root, source_format=config.source_format, prefer_parquet=True)
     sources = [source for source in sources if str(source.get("source_kind")) == "pff_match_triplets"]
+    sources, season_sampling_summary = sample_sources_by_season(
+        sources,
+        season_sample_ratio=config.season_sample_ratio,
+        split_seed=config.split_seed,
+    )
 
     if baseline_xg_artifacts is None:
         baseline_model_path = REPO_ROOT / "results" / "models" / "shot" / "baseline_xg_model.pkl"
@@ -142,6 +161,7 @@ def build_shot_epv_dataset(
         shot_rows = events_df[events_df["possession_type"].astype(str).str.lower().str.strip() == "shot"].copy()
         if shot_rows.empty:
             continue
+        shot_rows = normalize_processed_shot_ids(shot_rows)
 
         labeled_df, summary = labeler.label_action_dataframe(
             action_df=shot_rows,
@@ -162,13 +182,21 @@ def build_shot_epv_dataset(
             baseline_xg_artifacts=baseline_xg_artifacts,
         )
 
-        shot_df = pd.concat([labeled_df.reset_index(drop=True), feature_df.reset_index(drop=True)], axis=1)
+        labeled_without_feature_duplicates = labeled_df.drop(
+            columns=[column for column in feature_df.columns if column in labeled_df.columns],
+            errors="ignore",
+        )
+        shot_df = pd.concat(
+            [labeled_without_feature_duplicates.reset_index(drop=True), feature_df.reset_index(drop=True)],
+            axis=1,
+        )
         shot_df["reward_G"] = pd.to_numeric(shot_df.get("reward_label"), errors="coerce")
         shot_df["reward_norm"] = (shot_df["reward_G"] + 1.0) / 2.0
         parts.append(shot_df)
         source_summaries.append(summary)
 
-    dataset = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    concat_parts = [part.dropna(axis=1, how="all") for part in parts if not part.empty]
+    dataset = pd.concat(concat_parts, ignore_index=True) if concat_parts else pd.DataFrame()
     manifest, manifest_path = build_shot_split_manifest(dataset, config)
     dataset = apply_match_splits(dataset, manifest)
 
@@ -183,6 +211,7 @@ def build_shot_epv_dataset(
         "rows_labeled": int(dataset.get("reward_label", pd.Series(dtype=float)).notna().sum()) if not dataset.empty else 0,
         "rows_open_play": int((dataset.get("reward_status", pd.Series(dtype=str)) == "ok").sum()) if not dataset.empty else 0,
         "source_count": int(len(sources)),
+        "season_sampling": season_sampling_summary,
         "source_summaries": source_summaries,
         "manifest_path": str(manifest_path),
         "output_path": str(output_path),

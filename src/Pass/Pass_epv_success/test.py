@@ -38,6 +38,8 @@ class TestPassEPVSuccess:
             train_directory,
             test_directory=None,
             split_ratio=0.8,
+            split_mode="match",
+            split_manifest_path="data/processed/cache/splits/pass_match_split.json",
             pass_outcome_filter="C",
             pp_model_path=resolved_pp_model_path,
         )
@@ -210,7 +212,7 @@ class TestPassEPVSuccess:
 @dataclass
 class TestConfig:
     model_path: str = "results/models/pass_epv_success/Pass_epv_success.pt"
-    train_directory: str = "passes"
+    train_directory: str = "data/processed/pff_match_triplets"
     model_name: str = "Pass_epv_success"
     path_metric: str = "results/metrics"
     path_heatmap: str = "results/heatmaps"

@@ -51,9 +51,9 @@ def _load_pe_modules():
 
 
 def run_filter_contract_checks() -> Dict[str, int]:
-    sources = discover_pass_sources("data/passes", source_format="auto")
+    sources = discover_pass_sources("data/processed/pff_match_triplets", source_format="auto")
     if not sources:
-        raise FileNotFoundError("No canonical pass sources found under data/passes.")
+        raise FileNotFoundError("No canonical pass sources found under data/processed/pff_match_triplets.")
 
     labeler = PassRewardLabeler(
         event_root=ROOT / "data/raw/event",
@@ -121,7 +121,7 @@ def run_pe_success_checkpoint() -> None:
     filter_summary = run_filter_contract_checks()
 
     dataset = pe_dataloader.PFFDataset(
-        train_directory="data/passes",
+        train_directory="data/processed/pff_match_triplets",
         split_ratio=0.8,
         pass_outcome_filter="C",
         reward_event_directory="data/raw/event",

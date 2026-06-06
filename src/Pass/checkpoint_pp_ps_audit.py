@@ -52,9 +52,9 @@ def load_soccermap_class(package_dir: Path, class_name: str):
 
 
 def build_single_sample(root: Path):
-    sources = discover_pass_sources("data/passes", source_format="auto")
+    sources = discover_pass_sources("data/processed/pff_match_triplets", source_format="auto")
     if not sources:
-        raise FileNotFoundError("No canonical pass sources found under data/passes.")
+        raise FileNotFoundError("No canonical pass sources found under data/processed/pff_match_triplets.")
 
     source_file = None
     row = None

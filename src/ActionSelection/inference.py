@@ -36,7 +36,7 @@ def predict_action_selection_probs(
     model_path: Optional[Path] = None,
     baseline_xg_artifacts: Optional[BaselineXGArtifacts] = None,
 ) -> Dict[str, float]:
-    resolved_model_path = model_path or (REPO_ROOT / "results" / "models" / "action_selection" / "action_selection_net.pt")
+    resolved_model_path = model_path or (REPO_ROOT / "results" / "models" / "action_selection" / "action_selection_model.pt")
     if not resolved_model_path.exists():
         raise FileNotFoundError(f"Action-selection model not found: {resolved_model_path}")
 

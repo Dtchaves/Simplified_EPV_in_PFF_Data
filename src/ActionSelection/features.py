@@ -106,6 +106,9 @@ class ActionSelectionFeatureBuilder:
                 if column in {"match_id", "frame_id", "team_id", "player_id"}:
                     frame[column] = frame[column].astype("Int64")
 
+        if {"match_id", "frame_id"}.issubset(frame.columns):
+            frame = frame.sort_values(["match_id", "frame_id"]).set_index(["match_id", "frame_id"], drop=False)
+
         return frame
 
     def _normalize_row(self, row: pd.Series) -> pd.Series:
@@ -170,6 +173,16 @@ class ActionSelectionFeatureBuilder:
         frame_id = pd.to_numeric(row.get("frame_id", row.get("start_frame_id")), errors="coerce")
         if pd.isna(match_id) or pd.isna(frame_id):
             return None
+
+        if isinstance(tracking_df.index, pd.MultiIndex) and list(tracking_df.index.names[:2]) == ["match_id", "frame_id"]:
+            key = (int(match_id), int(frame_id))
+            try:
+                frame_slice = tracking_df.loc[key]
+            except KeyError:
+                return None
+            if isinstance(frame_slice, pd.Series):
+                return frame_slice.to_frame().T.copy()
+            return frame_slice.copy()
 
         match_col = "match_id" if "match_id" in tracking_df.columns else "game_id"
         frame_col = "frame_id"
@@ -283,7 +296,12 @@ class ActionSelectionFeatureBuilder:
         if ball_x is None or ball_y is None:
             ball_x, ball_y = 0.0, 0.0
 
-        normalized_tracking = self._normalize_tracking_df(tracking_df)
+        normalized_tracking = tracking_df
+        if normalized_tracking is not None and not (
+            isinstance(normalized_tracking.index, pd.MultiIndex)
+            and list(normalized_tracking.index.names[:2]) == ["match_id", "frame_id"]
+        ):
+            normalized_tracking = self._normalize_tracking_df(tracking_df)
         frame_players = self._tracking_slice(normalized_row, normalized_tracking)
         if frame_players is not None and not frame_players.empty:
             if "team_side" in frame_players.columns:

@@ -456,7 +456,11 @@ class ProcessedEventIndex:
     ) -> Tuple[Optional[ProcessedActionEvent], str]:
         normalized_action_type = str(action_type).strip().lower()
         game_event_id = _normalize_id(action_row.get("game_event_id"))
+        if game_event_id is None:
+            game_event_id = _normalize_id(action_row.get("event_id"))
         possession_event_id = _normalize_id(action_row.get("possession_event_id"))
+        if possession_event_id is None:
+            possession_event_id = _normalize_id(action_row.get("possession_id"))
         team_id = _normalize_id(action_row.get("team_id"))
 
         by_pair = self._action_by_pair.get(normalized_action_type, {})
@@ -729,6 +733,82 @@ class PassRewardLabeler:
             labeled_df["reward_label"] = labeled_df["reward_label"].astype(int)
 
         return labeled_df, summary
+
+    def filter_pass_dataframe_open_play(
+        self,
+        pass_df: pd.DataFrame,
+        source_filename: Optional[str] = None,
+        drop_filtered: bool = True,
+        source_kind: str = "legacy_wide",
+        processed_events_path: Optional[str | Path] = None,
+        processed_tracking_path: Optional[str | Path] = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        game_id = self._extract_game_id(pass_df, source_filename)
+
+        if source_kind == "pff_match_triplets":
+            if processed_events_path is None:
+                raise ValueError("processed_events_path is required for pff_match_triplets open-play filtering")
+
+            events_path = Path(processed_events_path)
+            tracking_path = Path(processed_tracking_path) if processed_tracking_path is not None else None
+            game_index: Any = self._get_processed_index(events_path, tracking_path)
+        else:
+            if game_id is None:
+                raise ValueError(
+                    "Could not resolve game_id from pass dataframe. "
+                    "Expected column 'game_id' or a filename containing a numeric game id."
+                )
+            game_index = self._get_game_index(game_id)
+
+        filtered_df = pass_df.copy()
+        statuses: List[str] = []
+        join_strategies: List[str] = []
+        pass_event_times: List[Optional[float]] = []
+        pass_setpiece_types: List[Optional[str]] = []
+
+        for _, row in filtered_df.iterrows():
+            resolved_event, join_strategy = game_index.resolve_pass_event(row)
+            join_strategies.append(str(join_strategy))
+
+            if resolved_event is None:
+                statuses.append("join_missing")
+                pass_event_times.append(None)
+                pass_setpiece_types.append(None)
+                continue
+
+            event_time = resolved_event.event_time
+            setpiece_type = getattr(resolved_event, "set_piece", getattr(resolved_event, "setpiece_type", None))
+
+            if source_kind == "pff_match_triplets":
+                is_open_play = setpiece_type == "open_play" or (
+                    setpiece_type is None and self.include_open_play_null
+                )
+            else:
+                is_open_play = _is_open_play(setpiece_type, self.include_open_play_null)
+
+            statuses.append("open_play" if is_open_play else "setpiece_filtered")
+            pass_event_times.append(event_time)
+            pass_setpiece_types.append(setpiece_type)
+
+        filtered_df["open_play_status"] = statuses
+        filtered_df["open_play_join_strategy"] = join_strategies
+        filtered_df["open_play_pass_event_time"] = pass_event_times
+        filtered_df["open_play_pass_setpiece_type"] = pass_setpiece_types
+
+        summary: Dict[str, Any] = {
+            "game_id": game_id,
+            "source_kind": source_kind,
+            "rows_total": int(len(filtered_df)),
+            "rows_open_play": int(sum(status == "open_play" for status in statuses)),
+            "rows_filtered": int(sum(status != "open_play" for status in statuses)),
+            "status_counts": filtered_df["open_play_status"].value_counts(dropna=False).to_dict(),
+            "join_strategy_counts": filtered_df["open_play_join_strategy"].value_counts(dropna=False).to_dict(),
+        }
+
+        if drop_filtered:
+            filtered_df = filtered_df[filtered_df["open_play_status"] == "open_play"].copy()
+
+        return filtered_df, summary
 
     def label_pass_dataframe(
         self,

@@ -1,7 +1,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import torch
@@ -24,7 +24,7 @@ try:
     from data_utils import (
         PP_PS_CACHE_VERSION,
         discover_pass_sources,
-        split_sources_by_mode,
+        split_sources_train_val_test_by_mode,
         load_or_build_canonical_pass_cache,
         load_tensor_cache,
         save_tensor_cache,
@@ -36,7 +36,7 @@ except ImportError:
     from ..data_utils import (
         PP_PS_CACHE_VERSION,
         discover_pass_sources,
-        split_sources_by_mode,
+        split_sources_train_val_test_by_mode,
         load_or_build_canonical_pass_cache,
         load_tensor_cache,
         save_tensor_cache,
@@ -51,12 +51,16 @@ class PFFDataset(Dataset):
         test_directory=None,
         split_ratio=0.8,
         label_mode="pass_outcome",
+        open_play_only=True,
         reward_event_directory="data/raw/event",
         reward_horizon_seconds=15.0,
         include_open_play_null=True,
         split_mode="row",
         split_manifest_path=None,
         split_seed=42,
+        season_sample_ratio: Optional[float] = None,
+        cache_enabled: Optional[bool] = None,
+        is_test_mode: bool = False,
     ):
         self.train_data = []
         self.train_labels = []
@@ -71,50 +75,58 @@ class PFFDataset(Dataset):
         self.test_mask = []
 
         self.label_mode = label_mode
+        self.open_play_only = bool(open_play_only)
+        self.include_open_play_null = bool(include_open_play_null)
         self.split_mode = str(split_mode).strip().lower()
         self.split_manifest_path = split_manifest_path
         self.split_seed = int(split_seed)
+        self.season_sample_ratio = season_sample_ratio
+        self.cache_enabled = cache_enabled
         if self.label_mode not in {"pass_outcome", "reward"}:
             raise ValueError("label_mode must be one of: 'pass_outcome', 'reward'.")
 
         self.reward_labeler = None
-        if self.label_mode == "reward":
+        if self.label_mode == "reward" or self.open_play_only:
             event_root = Path(reward_event_directory)
             if not event_root.is_absolute():
                 event_root = (REPO_ROOT / event_root).resolve()
             self.reward_labeler = PassRewardLabeler(
                 event_root=event_root,
                 horizon_seconds=reward_horizon_seconds,
-                include_open_play_null=include_open_play_null,
+                include_open_play_null=self.include_open_play_null,
             )
 
         if test_directory:
-            self._load_data(train_directory, is_train=True)
-            self._load_data(test_directory, is_train=False)
+            self._load_data(train_directory, split_name="train")
+            self._load_data(test_directory, split_name="test")
         else:
             if self.split_mode == "match":
                 sources = self._discover_sources(train_directory)
-                train_sources, val_sources, _ = split_sources_by_mode(
+                train_sources, val_sources, test_sources, _ = split_sources_train_val_test_by_mode(
                     sources,
-                    split_ratio=split_ratio,
+                    train_ratio=split_ratio,
                     split_mode="match",
                     split_seed=self.split_seed,
                     split_manifest_path=self.split_manifest_path,
+                    season_sample_ratio=self.season_sample_ratio,
                 )
-                self._load_data(train_directory, is_train=True, sources=train_sources)
-                self._load_data(train_directory, is_train=False, sources=val_sources)
 
-                self.val_data = list(self.test_data)
-                self.val_labels = list(self.test_labels)
-                self.val_mask = list(self.test_mask)
-                self.test_data = []
-                self.test_labels = []
-                self.test_mask = []
+                if is_test_mode:
+                    self._load_data(train_directory, split_name="val", sources=val_sources)
+                    self._load_data(train_directory, split_name="test", sources=test_sources)
+                else:
+                    self._load_data(train_directory, split_name="train", sources=train_sources)
+                    self._load_data(train_directory, split_name="val", sources=val_sources)
             else:
-                self._load_data(train_directory, is_train=True)
-                self.train_data, self.val_data, self.train_labels, self.val_labels, self.train_mask, self.val_mask = train_test_split(
-                    self.train_data, self.train_labels, self.train_mask, test_size=1-split_ratio, random_state=42
-                )
+                self._load_data(train_directory, split_name="train")
+                if len(self.train_data) < 2:
+                    self.val_data = list(self.train_data)
+                    self.val_labels = list(self.train_labels)
+                    self.val_mask = list(self.train_mask)
+                else:
+                    self.train_data, self.val_data, self.train_labels, self.val_labels, self.train_mask, self.val_mask = train_test_split(
+                        self.train_data, self.train_labels, self.train_mask, test_size=1-split_ratio, random_state=42
+                    )
 
     def _discover_sources(self, directory):
         data_path = Path(directory)
@@ -153,15 +165,19 @@ class PFFDataset(Dataset):
 
         return 0.0, 0.0, 0.0
 
-    def _append_payload(self, payload: Dict[str, Any], is_train: bool) -> None:
+    def _append_payload(self, payload: Dict[str, Any], split_name: str) -> None:
         data_list = payload.get("data", [])
         mask_list = payload.get("mask", [])
         label_list = payload.get("labels", [])
 
-        if is_train:
+        if split_name == "train":
             self.train_data.extend(data_list)
             self.train_mask.extend(mask_list)
             self.train_labels.extend(label_list)
+        elif split_name == "val":
+            self.val_data.extend(data_list)
+            self.val_mask.extend(mask_list)
+            self.val_labels.extend(label_list)
         else:
             self.test_data.extend(data_list)
             self.test_mask.extend(mask_list)
@@ -212,7 +228,7 @@ class PFFDataset(Dataset):
             "metadata": metadata,
         }
 
-    def _load_data(self, directory, is_train=True, sources=None):
+    def _load_data(self, directory, split_name="train", sources=None):
         if sources is None:
             try:
                 sources = self._discover_sources(directory)
@@ -220,7 +236,8 @@ class PFFDataset(Dataset):
                 print(f"[WARNING] {exc}")
                 return
 
-        print(f"Descobertos {len(sources)} fontes de dados para {'treino' if is_train else 'teste'}")
+        split_label = {"train": "treino", "val": "validacao", "test": "teste"}.get(split_name, split_name)
+        print(f"Descobertos {len(sources)} fontes de dados para {split_label}")
 
         # Required columns that MUST exist prior to event merge
         required_cols = [
@@ -233,6 +250,8 @@ class PFFDataset(Dataset):
             "label_mode": self.label_mode,
             "tensor_family": "pp_ps",
             "spatial_dim": [68, 104],
+            "open_play_only": self.open_play_only,
+            "include_open_play_null": self.include_open_play_null,
         }
 
         for source in sources:
@@ -244,6 +263,7 @@ class PFFDataset(Dataset):
                     required_columns=required_cols,
                     source_filename=source_name,
                     event_root="data/raw/event",
+                    cache_enabled=self.cache_enabled,
                 )
             except Exception as e:
                 print(f"[ERROR] Failed to load {source_name}: {e}")
@@ -261,9 +281,10 @@ class PFFDataset(Dataset):
                     artifact_stem="pass_outcome_tensors",
                     cache_version=PP_PS_CACHE_VERSION,
                     dependencies=cache_dependencies,
+                    cache_enabled=self.cache_enabled,
                 )
                 if cached_payload is not None:
-                    self._append_payload(cached_payload, is_train=is_train)
+                    self._append_payload(cached_payload, split_name=split_name)
                     continue
 
             if self.label_mode == "reward" and self.reward_labeler is not None:
@@ -278,6 +299,22 @@ class PFFDataset(Dataset):
                 if df.empty:
                     continue
 
+            if self.label_mode == "pass_outcome" and self.open_play_only and self.reward_labeler is not None:
+                try:
+                    df, filter_summary = self.reward_labeler.filter_pass_dataframe_open_play(
+                        df,
+                        source_filename=source_name,
+                        drop_filtered=True,
+                        source_kind=str(source.get("source_kind", "legacy_wide")),
+                        processed_events_path=source.get("events_path"),
+                        processed_tracking_path=source.get("tracking_path"),
+                    )
+                except Exception as e:
+                    print(f"[ERROR] Failed to filter open-play passes for {source_name}: {e}")
+                    continue
+                if df.empty:
+                    continue
+
             if self.label_mode == "pass_outcome":
                 payload = self._build_pass_outcome_tensor_payload(df, source_path)
                 payload = save_tensor_cache(
@@ -287,8 +324,9 @@ class PFFDataset(Dataset):
                     cache_version=PP_PS_CACHE_VERSION,
                     payload=payload,
                     dependencies=cache_dependencies,
+                    cache_enabled=self.cache_enabled,
                 )
-                self._append_payload(payload, is_train=is_train)
+                self._append_payload(payload, split_name=split_name)
                 continue
 
             tensor_converter = ToSoccerMapTensor()
@@ -312,10 +350,14 @@ class PFFDataset(Dataset):
                 matrix, mask, target = tensor_converter(sample)
                 target_value = int(row["reward_label"]) if self.label_mode == "reward" else int(target[0])
 
-                if is_train:
+                if split_name == "train":
                     self.train_data.append(matrix)
                     self.train_mask.append(mask)
                     self.train_labels.append(target_value)
+                elif split_name == "val":
+                    self.val_data.append(matrix)
+                    self.val_mask.append(mask)
+                    self.val_labels.append(target_value)
                 else:
                     self.test_data.append(matrix)
                     self.test_mask.append(mask)

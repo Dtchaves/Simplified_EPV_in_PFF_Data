@@ -80,9 +80,9 @@ def _collect_labeled_samples(
     max_success_samples: int,
     max_missed_samples: int,
 ) -> List[Dict]:
-    sources = discover_pass_sources("data/passes", source_format="auto")
+    sources = discover_pass_sources("data/processed/pff_match_triplets", source_format="auto")
     if not sources:
-        raise FileNotFoundError("No canonical pass sources found under data/passes.")
+        raise FileNotFoundError("No canonical pass sources found under data/processed/pff_match_triplets.")
 
     samples: List[Dict] = []
     success_count = 0
