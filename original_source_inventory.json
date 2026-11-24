@@ -1,0 +1,112 @@
+{
+  "utc": "2026-09-30T15:53:16.202595+00:00",
+  "origin": "/home/joaomarcostomaz/causal/Simplified_EPV_in_PFF_Data",
+  "source_stage": "/home/joaomarcostomaz/causal/Simplified_EPV_in_PFF_Data/data/public_statsbomb_causal/runs/public-submission-20260930/source",
+  "files": [
+    {
+      "path": "results/models/public_statsbomb_causal_study.ipynb",
+      "sha256": "fcb4ec04a77ab5f5d46bf7a7c7f99866e538417551dc834b405328a80d06ea41",
+      "bytes": 181113
+    },
+    {
+      "path": "requirements_public_causal.txt",
+      "sha256": "bd6c689614d0d4c7b400db9792f09323f32507ff488a3a46622e33b9c21556f3",
+      "bytes": 289
+    },
+    {
+      "path": "src/PublicCausal/data.py",
+      "sha256": "42cf3ce32cd2c1b551e202fd0052ffb39cf655a78106d084b114ac459328bac1",
+      "bytes": 32214
+    },
+    {
+      "path": "src/PublicCausal/notebook_runtime.py",
+      "sha256": "3b54c3c8a7175e08b1116d0989a681dc6bbf4e737e31b4b76f1473a20c843572",
+      "bytes": 20235
+    },
+    {
+      "path": "src/PublicCausal/__init__.py",
+      "sha256": "e167e365ca19a98904b5be468852c167bd3a85e35efb50252d45639c065c9f5d",
+      "bytes": 232
+    },
+    {
+      "path": "scripts/validate_public_causal.py",
+      "sha256": "39ad2125afdd148cc28d9e4b9fa5265df7e46d01ac0ab23de20b47992edada5e",
+      "bytes": 2114
+    },
+    {
+      "path": "scripts/benchmark_public_causal_gpu.py",
+      "sha256": "d297da58219c319c90f8f97526c2988fe0d702564b08edb253e63599903bf9d0",
+      "bytes": 16004
+    },
+    {
+      "path": "scripts/run_public_causal.py",
+      "sha256": "15f810d4f6453c211e34ea3caadf43fd5168aa8f66c8a85e04b6802ee73850a0",
+      "bytes": 12668
+    },
+    {
+      "path": "scripts/benchmark_public_causal_gpu_concurrency.py",
+      "sha256": "456c7021c12197ea591327dd85099a9b10e088bf0e98f3cde5e5c3cd61c058a5",
+      "bytes": 7069
+    },
+    {
+      "path": "tests/public_causal/test_inference.py",
+      "sha256": "689e124fa30ae99f5b76ce89e30e72eb1a42cf1ade5a756a13f2ac679f3c762e",
+      "bytes": 10464
+    },
+    {
+      "path": "tests/public_causal/test_models.py",
+      "sha256": "12c0bb8825ec490a9d715e7ee9e416b52c6eb5da5b715e14d53a1c36bb71dc8e",
+      "bytes": 5629
+    },
+    {
+      "path": "tests/public_causal/test_runtime.py",
+      "sha256": "6e23245f65845e38d69e7838eaa4522662e4311540310a74788653553badaa72",
+      "bytes": 12475
+    },
+    {
+      "path": "tests/public_causal/test_data.py",
+      "sha256": "12def1bfde1641b3edf1d5e32542fe22e85b580d687a1a8ceeacc80da54b3ca0",
+      "bytes": 17500
+    },
+    {
+      "path": "tests/public_causal/test_gpu_benchmark.py",
+      "sha256": "e500a8ed755fc9cd696a484b7482053f280d9bb367219583cb4d401823b54e1a",
+      "bytes": 1928
+    },
+    {
+      "path": "docs/public_360_execution_status.md",
+      "sha256": "4a0bc3c522e899fd51afb74c9a5e76bd3c01c54d00f73554be0afeb2c1d8a52b",
+      "bytes": 3081
+    },
+    {
+      "path": "docs/public_360_approved_plan.md",
+      "sha256": "305c7898d5971234b7b48962470c9af47877be21bc4f4d6d4eda08bcc69ba13d",
+      "bytes": 13311
+    },
+    {
+      "path": "docs/public_360_submission_profile_proposal.md",
+      "sha256": "2d8f31af360021673bed298675e733653ea4698557aefa7833ebf0ea95bb1888",
+      "bytes": 19220
+    },
+    {
+      "path": "docs/public_360_gpu_benchmark.md",
+      "sha256": "2e908b5d5c784b0f83f19d8a67f305d210d48e8433bcdbc307988cf81b9eb062",
+      "bytes": 5585
+    },
+    {
+      "path": "docs/public_360_execution.md",
+      "sha256": "67bbb6b9b0dcac75aae060ad1d7ff8a71a6ac242ac301709442838bf39402ddd",
+      "bytes": 5844
+    },
+    {
+      "path": "docs/public_360_artifact_reuse.md",
+      "sha256": "b7e72163aa9cc12786d150904806c5a63e7a1fe9eacff20dbbe92d435b7d30c3",
+      "bytes": 14622
+    },
+    {
+      "path": "docs/public_360_artifact_reuse_audit.json",
+      "sha256": "e5aeae6f680178136b51c7b20e1d8bcdc0103de4b48ad576b70443433cd0aee4",
+      "bytes": 24092
+    }
+  ]
+}

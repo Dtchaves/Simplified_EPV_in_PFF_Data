@@ -1,0 +1,901 @@
+{
+  "att_reconciliation": {
+    "matches": true,
+    "recomputed_att": 0.017351150323680925,
+    "recomputed_cluster_se": 0.00978873572129941,
+    "saved_att": 0.017351150323680935,
+    "saved_cluster_se": 0.00978873572129941,
+    "se_matches": true
+  },
+  "audit_finished_utc": "2026-09-30T14:13:27.774551+00:00",
+  "audit_utc": "2026-09-30T14:13:23.664737+00:00",
+  "bootstrap": {
+    "attempts": 104,
+    "checksum_ok": true,
+    "companion_status_counts": {
+      "ok": 104
+    },
+    "diagnostics_failed": 86,
+    "diagnostics_passed": 18,
+    "first_attempt": 0,
+    "fold_support_selection_failed": 83,
+    "has_saved_models": false,
+    "key_balance_failed": 6,
+    "last_attempt": 103,
+    "mean_elapsed_seconds": 379.57496969073185,
+    "other_balance_failed": 9,
+    "path": "data/public_statsbomb_causal/runs/public-study-20260930/full/development/bootstrap/bootstrap_ccd1ee006a3408414354.json",
+    "sha256_snapshot": "fd8859ad761eeba5e009db8be07d39ed256cb75a736961c7ad5763835f3b4fe0",
+    "status_counts": {
+      "ok": 104
+    }
+  },
+  "candidates": {
+    "eligible": 37043,
+    "outcome_columns": [
+      "Y15",
+      "Y30",
+      "Y5",
+      "Y10",
+      "Y15_shot_start",
+      "Y15_duration"
+    ],
+    "rows": 200581,
+    "visibility_columns": [
+      "visible_disk_3m",
+      "visible_disk_5m",
+      "visible_disk_10m"
+    ]
+  },
+  "canonical": [
+    {
+      "bytes": 5256092,
+      "checksum_ok": true,
+      "is_current_full_cohort_key": false,
+      "key": "34c17a07a7353477ac8da07b96615d41d3b608a6d8bc0ac9234a5d07ce598f11",
+      "match_audits": 6,
+      "name": "development-34c17a07a7353477ac8da07b96615d41d3b608a6d8bc0ac9234a5d07ce598f11.pkl"
+    },
+    {
+      "bytes": 93627203,
+      "checksum_ok": true,
+      "is_current_full_cohort_key": true,
+      "key": "b1e7c846453dfec59b9d61ea37c538e1476926016ba895877562321e3d028d6b",
+      "match_audits": 102,
+      "name": "development-b1e7c846453dfec59b9d61ea37c538e1476926016ba895877562321e3d028d6b.pkl"
+    }
+  ],
+  "confirmation_directory_exists": false,
+  "contribution_exports": {
+    "cluster_scores.parquet": {
+      "columns": [
+        "original_match_id",
+        "score"
+      ],
+      "rows": 102
+    },
+    "rows.parquet": {
+      "columns": [
+        "match_id",
+        "original_match_id",
+        "event_id",
+        "source_event_ids",
+        "event_index",
+        "team_id",
+        "opponent_id",
+        "player_id",
+        "cohort",
+        "T",
+        "action_type",
+        "action_types",
+        "contains_carry",
+        "period",
+        "time_seconds",
+        "position_role",
+        "eligible",
+        "drop_reason",
+        "visibility_radius",
+        "Y15",
+        "Y30",
+        "x",
+        "y",
+        "distance",
+        "angle",
+        "defenders_3m",
+        "nearest_defender",
+        "second_defender",
+        "visible_disk_3m",
+        "visible_disk_5m",
+        "visible_disk_10m",
+        "visible_attackers",
+        "visible_defenders",
+        "opposing_keeper_visible",
+        "observed_keeper_x",
+        "observed_keeper_y",
+        "observed_teammates_ahead",
+        "defenders_5m",
+        "nearest_defender_5m",
+        "defenders_10m",
+        "nearest_defender_10m",
+        "score_difference",
+        "history_time_since_prev_action",
+        "history_prior_10s_actions",
+        "history_missing_previous",
+        "history_prior_match_actions",
+        "history_progress_missing",
+        "history_prior_10s_progress",
+        "time_since_prev_action",
+        "prior_10s_actions",
+        "prior_10s_progress",
+        "Y5",
+        "goal_event_5",
+        "goal_timing_5",
+        "full_horizon_5",
+        "Y10",
+        "goal_event_10",
+        "goal_timing_10",
+        "full_horizon_10",
+        "goal_event_15",
+        "goal_timing_15",
+        "full_horizon_15",
+        "goal_event_30",
+        "goal_timing_30",
+        "full_horizon_30",
+        "Y15_shot_start",
+        "goal_event_15_shot_start",
+        "goal_timing_15_shot_start",
+        "Y15_duration",
+        "goal_event_15_duration",
+        "goal_timing_15_duration",
+        "Y",
+        "Treatment",
+        "decision_row_id",
+        "e",
+        "m0",
+        "m1",
+        "portable_e",
+        "support",
+        "outer_fold",
+        "domain_selection_passed",
+        "football_cell",
+        "support_threshold",
+        "support_reason",
+        "m0_clipped",
+        "m1_clipped",
+        "att_weight",
+        "residual",
+        "att_numerator",
+        "att_contribution",
+        "ratio_score"
+      ],
+      "rows": 36863
+    }
+  },
+  "core_check": {
+    "current": "2fa31ae58d4983d6490fb3f749455836e37db3548c700ce28825ac1a2e7f9f95",
+    "matches": true,
+    "saved": "2fa31ae58d4983d6490fb3f749455836e37db3548c700ce28825ac1a2e7f9f95"
+  },
+  "development_design_keys": [
+    "domains",
+    "model_specs_by_fold",
+    "config"
+  ],
+  "development_domain_thresholds": [
+    0.05,
+    0.05,
+    0.05,
+    0.05,
+    0.05
+  ],
+  "development_model_specs_by_fold": [
+    {
+      "e": {
+        "iterations": 100,
+        "kind": "hgb",
+        "leaves": 7
+      },
+      "fold": 0,
+      "m0": {
+        "alpha": 10,
+        "kind": "ridge"
+      },
+      "m1": {
+        "alpha": 10,
+        "kind": "ridge"
+      }
+    },
+    {
+      "e": {
+        "iterations": 100,
+        "kind": "hgb",
+        "leaves": 7
+      },
+      "fold": 1,
+      "m0": {
+        "alpha": 10,
+        "kind": "ridge"
+      },
+      "m1": {
+        "alpha": 10,
+        "kind": "ridge"
+      }
+    },
+    {
+      "e": {
+        "iterations": 100,
+        "kind": "hgb",
+        "leaves": 7
+      },
+      "fold": 2,
+      "m0": {
+        "alpha": 10,
+        "kind": "ridge"
+      },
+      "m1": {
+        "alpha": 10,
+        "kind": "ridge"
+      }
+    },
+    {
+      "e": {
+        "iterations": 100,
+        "kind": "hgb",
+        "leaves": 7
+      },
+      "fold": 3,
+      "m0": {
+        "alpha": 10,
+        "kind": "ridge"
+      },
+      "m1": {
+        "alpha": 10,
+        "kind": "ridge"
+      }
+    },
+    {
+      "e": {
+        "iterations": 100,
+        "kind": "hgb",
+        "leaves": 7
+      },
+      "fold": 4,
+      "m0": {
+        "alpha": 10,
+        "kind": "ridge"
+      },
+      "m1": {
+        "alpha": 10,
+        "kind": "ridge"
+      }
+    }
+  ],
+  "expected_full_development_canonical_key": "b1e7c846453dfec59b9d61ea37c538e1476926016ba895877562321e3d028d6b",
+  "exports": [
+    {
+      "bytes": 808,
+      "path": "exports/att.json",
+      "sha256": "7a45d823d0869594612fe89bac494f30a16c37ddaf2c0566e63b23ef84383a6c"
+    },
+    {
+      "bytes": 605308,
+      "path": "exports/att_contributions/cluster_scores.parquet",
+      "sha256": "aedcccac31647410b19ccdf7c0a68e24d189db62e4de0ae0e336d8c240fc803c"
+    },
+    {
+      "bytes": 10868884,
+      "path": "exports/att_contributions/rows.parquet",
+      "sha256": "3b58c62fb9d6a05c94a9825b97c20e1cbdc78ae30a53101aaa41184aca0cb47f"
+    },
+    {
+      "bytes": 689,
+      "path": "exports/att_contributions/summary.json",
+      "sha256": "c824382552d7b158a9308ea91567a3752923a44d4308aecba5acd6c5c3584b2b"
+    },
+    {
+      "bytes": 312992,
+      "path": "exports/cases/all_comparator_pairs.parquet",
+      "sha256": "4078a75f31d6e70145c810c39bf75b21ad716043ab9fce7f8edaa4c830125778"
+    },
+    {
+      "bytes": 141,
+      "path": "exports/cases/blinded_rating_template.csv",
+      "sha256": "a4fdd0fa4b8f9cd919a53c74bd37ce1b640b68a09f45c3198280ab7c8a3ce682"
+    },
+    {
+      "bytes": 16587,
+      "path": "exports/cases/case_1.pdf",
+      "sha256": "e158b6bda9a91706bb76090df72d927db839173b1b7d74db40eaf50fe95d5caa"
+    },
+    {
+      "bytes": 114509,
+      "path": "exports/cases/case_1.png",
+      "sha256": "75a790f14147094d90b1a365d8a1bcd78361dcea79f51ff6f06b554f8fc5fa81"
+    },
+    {
+      "bytes": 45062,
+      "path": "exports/cases/case_1.svg",
+      "sha256": "93a9c75841e9e8f4a659c961b5a24ed8ef6ecb0504e326f2eee6ab7d29ce8c1e"
+    },
+    {
+      "bytes": 17154,
+      "path": "exports/cases/case_2.pdf",
+      "sha256": "b2c4d0dca9ee32ef5d166190f8cb2fd078f366545ae27dfc5f732bd383039ccf"
+    },
+    {
+      "bytes": 111682,
+      "path": "exports/cases/case_2.png",
+      "sha256": "ef439010323f550fbd752a022cb57b32ceabc174d0af32ade1c01fd5901adb1c"
+    },
+    {
+      "bytes": 46231,
+      "path": "exports/cases/case_2.svg",
+      "sha256": "d82afb84add9c46854e877b6f67b31095aa5da7d1e7720993d3d3ab1d8814bfa"
+    },
+    {
+      "bytes": 16721,
+      "path": "exports/cases/case_3.pdf",
+      "sha256": "3ebaefa824cc78bd8f5afb968684402728ded98fe66fd55ef48364af147ab541"
+    },
+    {
+      "bytes": 115149,
+      "path": "exports/cases/case_3.png",
+      "sha256": "da124c31f4e04479325c9162cd3114e1c87fe7351bb48543b1d0a529fe4228a3"
+    },
+    {
+      "bytes": 45822,
+      "path": "exports/cases/case_3.svg",
+      "sha256": "9c79eba34f992e54462bb1ab8bc94779a51e142575715958bac02af6b1f19c61"
+    },
+    {
+      "bytes": 16349,
+      "path": "exports/cases/case_4.pdf",
+      "sha256": "266cbade4af34da3ee826165996c91ad8caa617afdc9a48a86e83fd8d26418f0"
+    },
+    {
+      "bytes": 102029,
+      "path": "exports/cases/case_4.png",
+      "sha256": "b0faa8e5e1f29a3377236d9976423ac297349522fb9a63a6a109a6ddce4afc2d"
+    },
+    {
+      "bytes": 42332,
+      "path": "exports/cases/case_4.svg",
+      "sha256": "9b01599aa105ffb3624960e041c2544a652d1b2faee5d4c6ced4c62b44c20367"
+    },
+    {
+      "bytes": 16091,
+      "path": "exports/cases/case_5.pdf",
+      "sha256": "eb770bd80296ea6b47a6efe4a61e3577efad7ad81fac88bc395f386facdd5fcb"
+    },
+    {
+      "bytes": 98140,
+      "path": "exports/cases/case_5.png",
+      "sha256": "2b4b0ed7b0928baa7cc920ebf40c354bb3ec72b38186eb25d897a37926a63663"
+    },
+    {
+      "bytes": 41731,
+      "path": "exports/cases/case_5.svg",
+      "sha256": "9091bfe79f43844cee179722fe99a8631d1cf9a899b830f68377ea48d8a26b93"
+    },
+    {
+      "bytes": 17189,
+      "path": "exports/cases/case_6.pdf",
+      "sha256": "a004387b51712f132a62c9f2b8b8b53df5223121373d5329aefea85abef9e13c"
+    },
+    {
+      "bytes": 102536,
+      "path": "exports/cases/case_6.png",
+      "sha256": "f36ebfe520c1b9ed5a01a5c1e0204c40f6426e80ba4a54d49d5c13944b6b789c"
+    },
+    {
+      "bytes": 44180,
+      "path": "exports/cases/case_6.svg",
+      "sha256": "225496811a4c7b1e86fb6d78a1e4cefc23ec1924938c5626b2134433d6a50188"
+    },
+    {
+      "bytes": 5778,
+      "path": "exports/cases/case_donor_pairs.parquet",
+      "sha256": "87c32a8cdc5a9e077a81871e4905bb2eea5b444b07bbed00a08104f6bcfaad4b"
+    },
+    {
+      "bytes": 655829,
+      "path": "exports/cases/cases.parquet",
+      "sha256": "131379680e5d40a54a4d5af4cb105c12264f5e448afdf5c37c50a287c0a6a7e8"
+    },
+    {
+      "bytes": 312992,
+      "path": "exports/comparator_pairs.parquet",
+      "sha256": "4078a75f31d6e70145c810c39bf75b21ad716043ab9fce7f8edaa4c830125778"
+    },
+    {
+      "bytes": 146842,
+      "path": "exports/comparator_reuse.parquet",
+      "sha256": "f7ef3f767d48aa0382db28943dc0d8d8ab6d63b0fdc00c5b1c4cd5cf59045156"
+    },
+    {
+      "bytes": 264482,
+      "path": "exports/comparator_spatial_pairs.parquet",
+      "sha256": "6b1cb8916237b43db2a7c8a679832c48fedb7b4a2cc1bf30453d222f9980d933"
+    },
+    {
+      "bytes": 140347,
+      "path": "exports/comparator_spatial_reuse.parquet",
+      "sha256": "68a29d8f9fdf523e8f146f99dcedda6c48bf040756295c96c168d0d5fba24e2c"
+    },
+    {
+      "bytes": 4167,
+      "path": "exports/comparator_summary.parquet",
+      "sha256": "ddd03811a0dfa30e29bb9ee54ecd296ef1f3fbee48428898191977f54cedce35"
+    },
+    {
+      "bytes": 911588,
+      "path": "exports/fold_provenance.json",
+      "sha256": "0358dce9f7047e529a0f30c30cc8a03952a95c24a00c4f80951565a271ed0669"
+    },
+    {
+      "bytes": 44509,
+      "path": "exports/model_validation.json",
+      "sha256": "fa3e0580d9d0ec1dea17a473e9c90407a69c0e9167e26344dd58ace46866aa91"
+    },
+    {
+      "bytes": 9231639,
+      "path": "exports/nuisance_rows.parquet",
+      "sha256": "fd8371f0779d6ae92379271db4d51d07bc970eb58287da0bf5af091ad63c5ffb"
+    },
+    {
+      "bytes": 998,
+      "path": "exports/outcome_validation.csv",
+      "sha256": "1cbc17b28a34631f90c4c9a4949872daae39496e58a60dc99480eac496c45f65"
+    },
+    {
+      "bytes": 242,
+      "path": "exports/reward_components_observed.json",
+      "sha256": "19f6f138d1f3fd21ea543de172ebceed40d9e83673e283b4239305e954f62f41"
+    },
+    {
+      "bytes": 36374,
+      "path": "exports/subgroups.json",
+      "sha256": "d4387ea93e6259514df9356d6d7c9047da303fb2d345af779f12db5550f34d39"
+    },
+    {
+      "bytes": 20368,
+      "path": "exports/support.pdf",
+      "sha256": "78ef68437ebbab08fe5a6f123e4c518ffa5ee37b303f9ca02d6d68f461d36455"
+    },
+    {
+      "bytes": 181390,
+      "path": "exports/support.png",
+      "sha256": "d32f601cbdde0d8214c8481c2e47a3c1bae15e2fde664ee6c1f6de5ff422dad0"
+    },
+    {
+      "bytes": 87807,
+      "path": "exports/support.svg",
+      "sha256": "192f24b8eb03e9d0313934de42a3badb9d1b6120e4c1b4cdd49a9c55a16deef9"
+    },
+    {
+      "bytes": 5638,
+      "path": "exports/support_diagnostics.json",
+      "sha256": "9e2cfdba9ee3ce32ea2e14d6bf4b24801e6f2c9b5d5ca01b6dac2802365800df"
+    },
+    {
+      "bytes": 1350,
+      "path": "exports/weighted_calibration.csv",
+      "sha256": "e9b4c6f74a93e4b601923a6aca333d85bee3d3e233f7e2695b5db2519b3fa109"
+    }
+  ],
+  "fit_integrity": {
+    "checksum_ok": true,
+    "provenance_key_ok": true,
+    "sha256": "64a6d81ea7c46ad08ec7d1a36880641badbc9be3b096a5dc368ba70b7c3ee2c6"
+  },
+  "fit_keys": [
+    "rows",
+    "diagnostics",
+    "design",
+    "provenance",
+    "model_validation"
+  ],
+  "fold_provenance": {
+    "entries": 555,
+    "stages": {
+      "e_outer": 5,
+      "m0_inner": 195,
+      "m0_outer": 5,
+      "m1_inner": 195,
+      "m1_outer": 5,
+      "propensity_calibration_prediction": 60,
+      "propensity_inner": 60,
+      "propensity_inner_calibration": 15,
+      "support_inner": 15
+    },
+    "train_test_overlap_entries": []
+  },
+  "helper_checks": {
+    "src/PublicCausal/__init__.py": {
+      "current": "e167e365ca19a98904b5be468852c167bd3a85e35efb50252d45639c065c9f5d",
+      "matches": true,
+      "saved": "e167e365ca19a98904b5be468852c167bd3a85e35efb50252d45639c065c9f5d"
+    },
+    "src/PublicCausal/data.py": {
+      "current": "42cf3ce32cd2c1b551e202fd0052ffb39cf655a78106d084b114ac459328bac1",
+      "matches": true,
+      "saved": "42cf3ce32cd2c1b551e202fd0052ffb39cf655a78106d084b114ac459328bac1"
+    },
+    "src/PublicCausal/notebook_runtime.py": {
+      "current": "3b54c3c8a7175e08b1116d0989a681dc6bbf4e737e31b4b76f1473a20c843572",
+      "matches": true,
+      "saved": "3b54c3c8a7175e08b1116d0989a681dc6bbf4e737e31b4b76f1473a20c843572"
+    }
+  },
+  "manifest_names": [
+    "development.json",
+    "implementation_tests.json"
+  ],
+  "primary_diagnostics": {
+    "control_ess": 1774.7422429979856,
+    "fold_support_selection_passed": true,
+    "gates": {
+      "donor_concentration": true,
+      "effective_donors": true,
+      "key_balance": true,
+      "match_concentration": true,
+      "match_count": true,
+      "other_balance": true,
+      "shot_count": true
+    },
+    "key_max_smd": 0.043167726905392216,
+    "max_match_weight_share": 0.024559531412962066,
+    "max_weight_share": 0.0035456698341233494,
+    "maximum_weight": 7.825976189800192,
+    "n_controls": 34682,
+    "n_shots": 2181,
+    "n_treated_matches": 102,
+    "other_max_smd": 0.09251443543554544,
+    "passed": true,
+    "shot_retention": 0.9413034095813552,
+    "weight_sum": 2207.192591505105,
+    "weight_to_treated_count_ratio": 1.0120094413136658
+  },
+  "provenance": {
+    "config": {
+      "bootstrap_max_attempts": 1500,
+      "bootstrap_target": 1000,
+      "donor_match_min": 3,
+      "donor_min": 10,
+      "e_candidates": [
+        {
+          "C": 0.05,
+          "kind": "logistic"
+        },
+        {
+          "C": 0.2,
+          "kind": "logistic"
+        },
+        {
+          "C": 1,
+          "kind": "logistic"
+        },
+        {
+          "iterations": 100,
+          "kind": "hgb",
+          "leaves": 7
+        }
+      ],
+      "ess_shot_fraction": 0.25,
+      "feature_names": [
+        "x",
+        "y",
+        "distance",
+        "angle",
+        "defenders_3m",
+        "nearest_defender",
+        "second_defender",
+        "score_difference",
+        "period",
+        "time_seconds",
+        "time_since_prev_action",
+        "prior_10s_actions",
+        "prior_10s_progress",
+        "position_role",
+        "team_id",
+        "opponent_id",
+        "cohort"
+      ],
+      "inner_folds": 3,
+      "key_balance_features": [
+        "distance",
+        "angle",
+        "defenders_3m",
+        "nearest_defender",
+        "score_difference",
+        "time_seconds"
+      ],
+      "key_smd_max": 0.1,
+      "log_run_dir": "/home/joaomarcostomaz/causal/Simplified_EPV_in_PFF_Data/data/public_statsbomb_causal/runs/public-study-20260930/full/development",
+      "max_match_weight_share": 0.1,
+      "max_weight_share": 0.01,
+      "min_ess": 200,
+      "min_matches": 30,
+      "min_shots": 200,
+      "null_reps": 200,
+      "other_smd_max": 0.15,
+      "outcome_candidates": [
+        {
+          "alpha": 0.1,
+          "kind": "ridge"
+        },
+        {
+          "alpha": 1,
+          "kind": "ridge"
+        },
+        {
+          "alpha": 10,
+          "kind": "ridge"
+        },
+        {
+          "alpha": 0.1,
+          "kind": "gam",
+          "knots": 3
+        },
+        {
+          "alpha": 1,
+          "kind": "gam",
+          "knots": 3
+        },
+        {
+          "alpha": 10,
+          "kind": "gam",
+          "knots": 3
+        },
+        {
+          "alpha": 0.1,
+          "kind": "gam",
+          "knots": 5
+        },
+        {
+          "alpha": 1,
+          "kind": "gam",
+          "knots": 5
+        },
+        {
+          "alpha": 10,
+          "kind": "gam",
+          "knots": 5
+        },
+        {
+          "iterations": 100,
+          "kind": "hgb",
+          "leaves": 7
+        },
+        {
+          "iterations": 200,
+          "kind": "hgb",
+          "leaves": 7
+        },
+        {
+          "iterations": 100,
+          "kind": "hgb",
+          "leaves": 15
+        },
+        {
+          "iterations": 200,
+          "kind": "hgb",
+          "leaves": 15
+        }
+      ],
+      "outer_folds": 5,
+      "run_id": "public-study-20260930",
+      "seed": 20260930,
+      "simulation_bootstrap": 1000,
+      "simulation_reps": 200,
+      "study_root": "/home/joaomarcostomaz/causal/Simplified_EPV_in_PFF_Data/data/public_statsbomb_causal",
+      "support_features": [
+        "x",
+        "y",
+        "distance",
+        "angle",
+        "defenders_3m",
+        "nearest_defender",
+        "second_defender",
+        "score_difference",
+        "period",
+        "time_seconds",
+        "time_since_prev_action",
+        "prior_10s_actions",
+        "prior_10s_progress"
+      ],
+      "support_thresholds": [
+        0.05,
+        0.1,
+        0.15,
+        0.2
+      ],
+      "workers": 4
+    },
+    "core_hash": "2fa31ae58d4983d6490fb3f749455836e37db3548c700ce28825ac1a2e7f9f95",
+    "data_hash": "0536402f6b73485ddc391f22ca8ef4f7b9098495d3aaa67c8343280a6f74ba74",
+    "design_hash": null,
+    "environment_hash": "c64ca963cc85369c60172ce3d1962c78e5195fe6b5f8257f27d524cb31d9c8d0",
+    "helper_hashes": {
+      "src/PublicCausal/__init__.py": "e167e365ca19a98904b5be468852c167bd3a85e35efb50252d45639c065c9f5d",
+      "src/PublicCausal/data.py": "42cf3ce32cd2c1b551e202fd0052ffb39cf655a78106d084b114ac459328bac1",
+      "src/PublicCausal/notebook_runtime.py": "3b54c3c8a7175e08b1116d0989a681dc6bbf4e737e31b4b76f1473a20c843572"
+    }
+  },
+  "raw_integrity": {
+    "cohorts": [
+      "euro2020",
+      "euro2024"
+    ],
+    "data_checksum_ok": true,
+    "failures": [],
+    "manifest_checksum_ok": true,
+    "matches": 102,
+    "records": 311,
+    "source_commit": "4b73468fc5b0f1950f9f66fada70ad3a4f9327cb",
+    "total_bytes": 1102932145
+  },
+  "read_only": true,
+  "remote_root": "/home/joaomarcostomaz/causal/Simplified_EPV_in_PFF_Data",
+  "run": "/home/joaomarcostomaz/causal/Simplified_EPV_in_PFF_Data/data/public_statsbomb_causal/runs/public-study-20260930/full",
+  "saved_rows": {
+    "cohort_counts": {
+      "rows": {
+        "euro2020": 17978,
+        "euro2024": 19065
+      },
+      "shots": {
+        "euro2020": 1123,
+        "euro2024": 1194
+      }
+    },
+    "exports_equal_fit_rows": false,
+    "match_single_outer_fold": true,
+    "matches": 102,
+    "normalized_json_equal": true,
+    "prediction_missing": {
+      "e": 0,
+      "m0": 0,
+      "m1": 0,
+      "portable_e": 0
+    },
+    "row_columns": [
+      "match_id",
+      "original_match_id",
+      "event_id",
+      "source_event_ids",
+      "event_index",
+      "team_id",
+      "opponent_id",
+      "player_id",
+      "cohort",
+      "T",
+      "action_type",
+      "action_types",
+      "contains_carry",
+      "period",
+      "time_seconds",
+      "position_role",
+      "eligible",
+      "drop_reason",
+      "visibility_radius",
+      "Y15",
+      "Y30",
+      "x",
+      "y",
+      "distance",
+      "angle",
+      "defenders_3m",
+      "nearest_defender",
+      "second_defender",
+      "visible_disk_3m",
+      "visible_disk_5m",
+      "visible_disk_10m",
+      "visible_attackers",
+      "visible_defenders",
+      "opposing_keeper_visible",
+      "observed_keeper_x",
+      "observed_keeper_y",
+      "observed_teammates_ahead",
+      "defenders_5m",
+      "nearest_defender_5m",
+      "defenders_10m",
+      "nearest_defender_10m",
+      "score_difference",
+      "history_time_since_prev_action",
+      "history_prior_10s_actions",
+      "history_missing_previous",
+      "history_prior_match_actions",
+      "history_progress_missing",
+      "history_prior_10s_progress",
+      "time_since_prev_action",
+      "prior_10s_actions",
+      "prior_10s_progress",
+      "Y5",
+      "goal_event_5",
+      "goal_timing_5",
+      "full_horizon_5",
+      "Y10",
+      "goal_event_10",
+      "goal_timing_10",
+      "full_horizon_10",
+      "goal_event_15",
+      "goal_timing_15",
+      "full_horizon_15",
+      "goal_event_30",
+      "goal_timing_30",
+      "full_horizon_30",
+      "Y15_shot_start",
+      "goal_event_15_shot_start",
+      "goal_timing_15_shot_start",
+      "Y15_duration",
+      "goal_event_15_duration",
+      "goal_timing_15_duration",
+      "Y",
+      "Treatment",
+      "decision_row_id",
+      "e",
+      "m0",
+      "m1",
+      "portable_e",
+      "support",
+      "outer_fold",
+      "domain_selection_passed",
+      "football_cell",
+      "support_threshold",
+      "support_reason",
+      "m0_clipped",
+      "m1_clipped"
+    ],
+    "rows": 37043,
+    "scientific_scalar_columns_equal": true,
+    "shots": 2317,
+    "supported_shots": 2181,
+    "unequal_columns": [
+      "source_event_ids",
+      "action_types",
+      "visible_disk_3m",
+      "visible_disk_5m",
+      "visible_disk_10m",
+      "opposing_keeper_visible",
+      "m0_clipped",
+      "m1_clipped"
+    ]
+  },
+  "stage_artifacts": {
+    "design_lock.json": false,
+    "exports/bootstrap": false,
+    "exports/influence": false,
+    "exports/nulls": false,
+    "exports/robustness": false,
+    "exports/sensitivity": false,
+    "exports/simulation": false,
+    "frozen_design.joblib": false,
+    "phase_result.json": false
+  },
+  "status": {
+    "completed": 104,
+    "elapsed_seconds": 11345.352584443055,
+    "eta_seconds": 86881.88034269672,
+    "last_event": "heartbeat",
+    "pid": 474746,
+    "run_id": "public-study-20260930",
+    "stage": "bootstrap",
+    "status": "ok",
+    "total": 1000,
+    "utc": "2026-09-30T14:13:17.125028+00:00"
+  },
+  "environment_check": {
+    "checked_utc": "2026-09-30T14:14:34.363146+00:00",
+    "current_fingerprint": "c64ca963cc85369c60172ce3d1962c78e5195fe6b5f8257f27d524cb31d9c8d0",
+    "matches_saved": true
+  },
+  "gpu_snapshot": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "memory_used_mib": 4,
+    "memory_total_mib": 24564,
+    "utilization_percent": 0,
+    "compute_processes": [],
+    "note": "Read-only nvidia-smi snapshot; availability can change."
+  }
+}
