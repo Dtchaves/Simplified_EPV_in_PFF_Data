@@ -8,7 +8,7 @@ from typing import Dict, List
 import pandas as pd
 
 from data_utils import discover_pass_sources, load_or_build_canonical_pass_cache
-from reward_labels import GameEventIndex, PassRewardLabeler
+from reward_labels import GameEventIndex, PassRewardLabeler, ProcessedEventIndex
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -128,6 +128,36 @@ def run_boundary_and_open_play_checks() -> None:
     assert label_setpiece is None and metadata_setpiece["status"] == "setpiece_filtered", (
         f"Expected non-open-play filtering, got {label_setpiece} {metadata_setpiece}"
     )
+
+    processed_events = pd.DataFrame(
+        [
+            {
+                "match_id": 1,
+                "period": 1,
+                "event_id": 21,
+                "possession_id": 201,
+                "team_id": 10,
+                "possession_type": "shot",
+                "set_piece": "open_play",
+                "shot_outcome": "goal",
+                "elapsed_seconds": 400.0,
+            }
+        ]
+    )
+    processed_index = ProcessedEventIndex(processed_events, None, horizon_seconds=15.0)
+    shot_label, shot_metadata = processed_index.label_action_row(
+        pd.Series(
+            {
+                "match_id": 1,
+                "period": 1,
+                "game_event_id": 21,
+                "possession_event_id": 201,
+                "team_id": 10,
+            }
+        ),
+        action_type="shot",
+    )
+    assert shot_label == 1, f"Expected scoring shot label, got {shot_label} with metadata={shot_metadata}"
 
 
 def run_reward_checkpoint() -> None:

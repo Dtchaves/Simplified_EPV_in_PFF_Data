@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ else:
 
 
 def Train() -> None:
+    logging.basicConfig(level=logging.INFO)
     result = train_action_selection_from_sources()
     print(json.dumps(result, indent=2, default=str))
 

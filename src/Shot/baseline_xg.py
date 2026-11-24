@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, ParameterGrid
 from sklearn.preprocessing import StandardScaler
 
 from Pass.data_utils import REPO_ROOT, discover_action_sources, sample_sources_by_season
@@ -117,7 +117,7 @@ def _header_flag(body_part: Any) -> int:
 
 def build_baseline_xg_dataset(
     config: Optional[BaselineXGConfig] = None,
-    output_path: Optional[Path] = None,
+    output_path: Optional[Path] = (REPO_ROOT / "results" / "models" / "shot" / "dataset"),
 ) -> pd.DataFrame:
     config = config or BaselineXGConfig()
     sources = discover_action_sources(config.source_root, source_format=config.source_format, prefer_parquet=True)
@@ -226,9 +226,23 @@ def train_baseline_xg(
 
     x = clean[list(feature_columns)].to_numpy(dtype=float)
     y = clean["is_goal"].to_numpy(dtype=int)
+    param_grid = {
+        "n_estimators": [50, 100, 250],
+        "learning_rate": [1e-3, 1e-2, 1e-1],
+        "max_depth": [3, 5, 10],
+    }
+    total_candidates = len(list(ParameterGrid(param_grid)))
+    total_fits = total_candidates * 10
+
+    print(
+        f"[baseline_xg] preparing training on {len(clean)} samples, "
+        f"{len(feature_columns)} features, {total_candidates} parameter sets, {total_fits} CV fits",
+        flush=True,
+    )
 
     scaler = StandardScaler()
     x_scaled = scaler.fit_transform(x)
+    print("[baseline_xg] feature scaling complete", flush=True)
 
     model_kwargs = {
         "objective": "binary:logistic",
@@ -238,21 +252,23 @@ def train_baseline_xg(
     if torch.cuda.is_available():
         model_kwargs["device"] = "cuda"
         model_kwargs["tree_method"] = "hist"
+        print("[baseline_xg] xgboost using CUDA", flush=True)
+    else:
+        print("[baseline_xg] xgboost using CPU", flush=True)
 
     model = xgb_module.XGBClassifier(**model_kwargs)
 
+    print("[baseline_xg] starting GridSearchCV", flush=True)
     grid = GridSearchCV(
         model,
-        param_grid={
-            "n_estimators": [50, 100, 250],
-            "learning_rate": [1e-3, 1e-2, 1e-1],
-            "max_depth": [3, 5, 10],
-        },
+        param_grid=param_grid,
         cv=10,
         scoring="neg_log_loss",
         n_jobs=-1,
+        verbose=3,
     )
     grid.fit(x_scaled, y)
+    print(f"[baseline_xg] GridSearchCV complete. best_params={grid.best_params_}", flush=True)
 
     best_model = grid.best_estimator_
     artifacts = BaselineXGArtifacts(model=best_model, scaler=scaler, feature_columns=feature_columns)
@@ -278,6 +294,8 @@ def train_baseline_xg(
             indent=2,
             sort_keys=True,
         )
+
+    print(f"[baseline_xg] saved artifacts to {resolved_dir}", flush=True)
 
     return artifacts
 

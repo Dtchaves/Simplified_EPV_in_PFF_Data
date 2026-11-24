@@ -1,10 +1,33 @@
-from .features import ActionSelectionFeatureBuilder, ActionSelectionFeatureConfig
-from .inference import predict_action_selection_probs
-from .models import ActionSelectionNet
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
 
 __all__ = [
     "ActionSelectionFeatureBuilder",
     "ActionSelectionFeatureConfig",
     "predict_action_selection_probs",
+    "score_action_selection_for_causal_decisions",
     "ActionSelectionNet",
 ]
+
+_EXPORTS = {
+    "ActionSelectionFeatureBuilder": (".features", "ActionSelectionFeatureBuilder"),
+    "ActionSelectionFeatureConfig": (".features", "ActionSelectionFeatureConfig"),
+    "predict_action_selection_probs": (".inference", "predict_action_selection_probs"),
+    "score_action_selection_for_causal_decisions": (".inference", "score_action_selection_for_causal_decisions"),
+    "ActionSelectionNet": (".models", "ActionSelectionNet"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _EXPORTS[name]
+    value = getattr(import_module(module_name, __name__), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

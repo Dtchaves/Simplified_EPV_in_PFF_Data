@@ -80,6 +80,65 @@ def _as_float(value: Any) -> Optional[float]:
     return number
 
 
+def _horizon_suffix(horizon_seconds: float) -> str:
+    """Return a stable suffix for horizon-specific outcome columns.
+
+    Examples
+    --------
+    5.0 -> "5s"
+    2.5 -> "2p5s"
+    """
+    value = float(horizon_seconds)
+    if value.is_integer():
+        return f"{int(value)}s"
+    return f"{str(value).replace('.', 'p')}s"
+
+
+def _nullable_binary_indicator(condition: pd.Series, valid: pd.Series) -> pd.Series:
+    """Create a nullable 0/1 series, preserving missing labels as <NA>."""
+    out = pd.Series(pd.NA, index=condition.index, dtype="Int64")
+    out.loc[valid & condition] = 1
+    out.loc[valid & ~condition] = 0
+    return out
+
+
+def _add_goal_outcome_columns(
+    labeled_df: pd.DataFrame,
+    *,
+    reward_col: str,
+    horizon_seconds: float,
+) -> List[str]:
+    """Attach goal-only non-EPV outcome columns derived from reward labels.
+
+    The existing reward label is ternary from the acting team's perspective:
+    +1 means the acting team scored first inside the horizon, -1 means the
+    opponent scored first inside the horizon, and 0 means no goal was observed
+    or the goal team could not be resolved. Missing reward labels remain
+    missing in all derived outcome columns. `any_goal` follows the first-goal
+    timestamp so unresolved goal-team cases still register as a goal.
+    """
+    suffix = _horizon_suffix(horizon_seconds)
+    reward = pd.to_numeric(labeled_df[reward_col], errors="coerce")
+    valid = reward.notna()
+    first_goal_observed = labeled_df.get(
+        "reward_first_goal_time",
+        pd.Series(index=labeled_df.index),
+    ).notna()
+
+    signed_col = f"signed_goal_reward_{suffix}"
+    goal_for_col = f"goal_for_within_{suffix}"
+    goal_against_col = f"goal_against_within_{suffix}"
+
+    signed = pd.Series(pd.NA, index=labeled_df.index, dtype="Int64")
+    signed.loc[valid] = reward.loc[valid].astype(int)
+
+    labeled_df[signed_col] = signed
+    labeled_df[goal_for_col] = _nullable_binary_indicator(reward == 1, valid)
+    labeled_df[goal_against_col] = _nullable_binary_indicator(reward == -1, valid)
+
+    return [signed_col, goal_for_col, goal_against_col]
+
+
 def _extract_event_time(record: Dict[str, Any]) -> Optional[float]:
     game_events = record.get("GAME_EVENTS") or {}
     possession_events = record.get("POSSESSION_EVENTS") or {}
@@ -321,6 +380,8 @@ class GameEventIndex:
 
 @dataclass(frozen=True)
 class ProcessedActionEvent:
+    match_id: Optional[int]
+    period: Optional[int]
     game_event_id: Optional[int]
     possession_event_id: Optional[int]
     team_id: Optional[int]
@@ -331,6 +392,8 @@ class ProcessedActionEvent:
 
 @dataclass(frozen=True)
 class ProcessedGoalEvent:
+    match_id: Optional[int]
+    period: Optional[int]
     team_id: Optional[int]
     event_time: Optional[float]
 
@@ -353,6 +416,8 @@ class ProcessedEventIndex:
                 continue
 
             event = ProcessedActionEvent(
+                match_id=_normalize_id(row.get("match_id")),
+                period=_normalize_id(row.get("period")),
                 game_event_id=_normalize_id(row.get("event_id")),
                 possession_event_id=_normalize_id(row.get("possession_id")),
                 team_id=_normalize_id(row.get("team_id")),
@@ -369,6 +434,8 @@ class ProcessedEventIndex:
 
         for _, row in goals_df.iterrows():
             goal_event = ProcessedGoalEvent(
+                match_id=_normalize_id(row.get("match_id")),
+                period=_normalize_id(row.get("period")),
                 team_id=_normalize_id(row.get("team_id")),
                 event_time=_as_float(row.get("elapsed_seconds")),
             )
@@ -418,11 +485,27 @@ class ProcessedEventIndex:
         return merged.drop(columns=[col for col in ["elapsed_seconds_tracking"] if col in merged.columns])
 
     @staticmethod
-    def _select_best_candidate(candidates: List[ProcessedActionEvent], team_id: Optional[int]) -> Optional[ProcessedActionEvent]:
+    def _select_best_candidate(
+        candidates: List[ProcessedActionEvent],
+        team_id: Optional[int],
+        match_id: Optional[int] = None,
+        period: Optional[int] = None,
+    ) -> Optional[ProcessedActionEvent]:
         if not candidates:
             return None
 
         subset = list(candidates)
+
+        if match_id is not None:
+            match_subset = [candidate for candidate in subset if candidate.match_id == match_id]
+            if match_subset:
+                subset = match_subset
+
+        if period is not None:
+            period_subset = [candidate for candidate in subset if candidate.period == period]
+            if period_subset:
+                subset = period_subset
+
         if team_id is not None:
             team_subset = [candidate for candidate in subset if candidate.team_id == team_id]
             if team_subset:
@@ -462,6 +545,8 @@ class ProcessedEventIndex:
         if possession_event_id is None:
             possession_event_id = _normalize_id(action_row.get("possession_id"))
         team_id = _normalize_id(action_row.get("team_id"))
+        match_id = _normalize_id(action_row.get("match_id"))
+        period = _normalize_id(action_row.get("period"))
 
         by_pair = self._action_by_pair.get(normalized_action_type, {})
         by_game_event_id = self._action_by_game_event_id.get(normalized_action_type, {})
@@ -471,6 +556,8 @@ class ProcessedEventIndex:
             from_pair = self._select_best_candidate(
                 by_pair.get((game_event_id, possession_event_id), []),
                 team_id,
+                match_id,
+                period,
             )
             if from_pair is not None:
                 return from_pair, "pair"
@@ -479,6 +566,8 @@ class ProcessedEventIndex:
             from_game_event = self._select_best_candidate(
                 by_game_event_id.get(game_event_id, []),
                 team_id,
+                match_id,
+                period,
             )
             if from_game_event is not None:
                 return from_game_event, "game_event_id"
@@ -487,6 +576,8 @@ class ProcessedEventIndex:
             from_possession_event = self._select_best_candidate(
                 by_possession_event_id.get(possession_event_id, []),
                 team_id,
+                match_id,
+                period,
             )
             if from_possession_event is not None:
                 return from_possession_event, "possession_event_id"
@@ -496,16 +587,40 @@ class ProcessedEventIndex:
     def resolve_pass_event(self, pass_row: pd.Series) -> Tuple[Optional[ProcessedActionEvent], str]:
         return self.resolve_action_event(pass_row, action_type="pass")
 
-    def _find_first_goal_after(self, event_time: float) -> Optional[ProcessedGoalEvent]:
+    @staticmethod
+    def _same_match_period(action_event: ProcessedActionEvent, goal_event: ProcessedGoalEvent) -> bool:
+        if action_event.match_id is not None and goal_event.match_id is not None:
+            if action_event.match_id != goal_event.match_id:
+                return False
+        if action_event.period is not None and goal_event.period is not None:
+            if action_event.period != goal_event.period:
+                return False
+        return True
+
+    def _find_first_goal_after(
+        self,
+        action_event: ProcessedActionEvent,
+        include_current_event: bool = False,
+    ) -> Optional[ProcessedGoalEvent]:
+        event_time = action_event.event_time
+        if event_time is None:
+            return None
+
         horizon = event_time + self.horizon_seconds
         for goal_event in self._goal_events:
             goal_time = goal_event.event_time
             if goal_time is None:
                 continue
-            if goal_time <= event_time:
-                continue
+            if include_current_event:
+                if goal_time < event_time:
+                    continue
+            else:
+                if goal_time <= event_time:
+                    continue
             if goal_time > horizon:
                 break
+            if not self._same_match_period(action_event, goal_event):
+                continue
             return goal_event
         return None
 
@@ -552,7 +667,10 @@ class ProcessedEventIndex:
             metadata["status"] = "missing_pass_time"
             return None, metadata
 
-        first_goal = self._find_first_goal_after(resolved_event.event_time)
+        first_goal = self._find_first_goal_after(
+            resolved_event,
+            include_current_event=normalized_action_type == "shot",
+        )
         if first_goal is None:
             metadata["status"] = "no_goal_window"
             return 0, metadata
@@ -661,9 +779,12 @@ class PassRewardLabeler:
         source_kind: str = "legacy_wide",
         processed_events_path: Optional[str | Path] = None,
         processed_tracking_path: Optional[str | Path] = None,
+        action_type_column: Optional[str] = None,
+        add_goal_outcomes: bool = True,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         game_id = self._extract_game_id(action_df, source_filename)
         normalized_action_type = str(action_type).strip().lower() or "pass"
+        use_action_type_column = bool(action_type_column and action_type_column in action_df.columns)
 
         if source_kind == "pff_match_triplets":
             if processed_events_path is None:
@@ -688,14 +809,20 @@ class PassRewardLabeler:
         action_setpiece_types: List[Optional[str]] = []
         first_goal_times: List[Optional[float]] = []
         first_goal_out_types: List[Optional[str]] = []
+        actual_action_types: List[str] = []
 
         for _, row in labeled_df.iterrows():
+            row_action_type = normalized_action_type
+            if use_action_type_column:
+                row_action_type = str(row.get(action_type_column)).strip().lower() or normalized_action_type
+
             label, metadata = game_index.label_action_row(
                 row,
-                action_type=normalized_action_type,
+                action_type=row_action_type,
                 include_open_play_null=self.include_open_play_null,
             )
             labels.append(label)
+            actual_action_types.append(str(metadata.get("action_type", row_action_type)))
             statuses.append(str(metadata["status"]))
             join_strategies.append(str(metadata["join_strategy"]))
             action_event_times.append(metadata.get("action_event_time"))
@@ -704,27 +831,41 @@ class PassRewardLabeler:
             first_goal_out_types.append(metadata["first_goal_out_type"])
 
         labeled_df["reward_label"] = pd.Series(labels, index=labeled_df.index, dtype="float")
+        labeled_df["reward_action_type"] = actual_action_types
         labeled_df["reward_status"] = statuses
         labeled_df["reward_join_strategy"] = join_strategies
         labeled_df["reward_action_event_time"] = action_event_times
         labeled_df["reward_action_setpiece_type"] = action_setpiece_types
-        labeled_df[f"reward_{normalized_action_type}_event_time"] = action_event_times
-        labeled_df[f"reward_{normalized_action_type}_setpiece_type"] = action_setpiece_types
-        if normalized_action_type == "pass":
+        if not use_action_type_column:
+            labeled_df[f"reward_{normalized_action_type}_event_time"] = action_event_times
+            labeled_df[f"reward_{normalized_action_type}_setpiece_type"] = action_setpiece_types
+        if normalized_action_type == "pass" and not use_action_type_column:
             labeled_df["reward_pass_event_time"] = action_event_times
             labeled_df["reward_pass_setpiece_type"] = action_setpiece_types
         labeled_df["reward_first_goal_time"] = first_goal_times
         labeled_df["reward_first_goal_out_type"] = first_goal_out_types
 
+        goal_outcome_columns: List[str] = []
+        if add_goal_outcomes:
+            goal_outcome_columns = _add_goal_outcome_columns(
+                labeled_df,
+                reward_col="reward_label",
+                horizon_seconds=self.horizon_seconds,
+            )
+
         summary: Dict[str, Any] = {
             "game_id": game_id,
-            "action_type": normalized_action_type,
+            "action_type": "mixed" if use_action_type_column else normalized_action_type,
+            "action_type_column": action_type_column if use_action_type_column else None,
             "source_kind": source_kind,
+            "horizon_seconds": self.horizon_seconds,
+            "goal_outcome_columns": goal_outcome_columns,
             "rows_total": int(len(labeled_df)),
             "rows_labeled": int(labeled_df["reward_label"].notna().sum()),
             "rows_dropped": int(labeled_df["reward_label"].isna().sum()),
             "status_counts": labeled_df["reward_status"].value_counts(dropna=False).to_dict(),
             "join_strategy_counts": labeled_df["reward_join_strategy"].value_counts(dropna=False).to_dict(),
+            "action_type_counts": labeled_df["reward_action_type"].value_counts(dropna=False).to_dict(),
             "label_counts": labeled_df["reward_label"].value_counts(dropna=False).to_dict(),
         }
 
@@ -818,6 +959,7 @@ class PassRewardLabeler:
         source_kind: str = "legacy_wide",
         processed_events_path: Optional[str | Path] = None,
         processed_tracking_path: Optional[str | Path] = None,
+        add_goal_outcomes: bool = True,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         return self.label_action_dataframe(
             action_df=pass_df,
@@ -827,4 +969,5 @@ class PassRewardLabeler:
             source_kind=source_kind,
             processed_events_path=processed_events_path,
             processed_tracking_path=processed_tracking_path,
+            add_goal_outcomes=add_goal_outcomes,
         )

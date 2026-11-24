@@ -34,13 +34,13 @@ export PYTHONPATH="$SOURCE_DIR/src:${PYTHONPATH:-}"
 # )
 
 MODELS=(
-    "src/Pass/Pass_sucess_probability/main.py"
+    # "src/Pass/Pass_sucess_probability/main.py"
     # "src/Pass/Pass_selection_probability/main.py"
     # "src/Pass/Pass_epv_success/main.py"
     # "src/Pass/Pass_epv_missed/main.py"
     # "src/BallDrive/main.py"
     # "src/Shot/main.py"
-    # "src/ActionSelection/main.py"
+    "src/ActionSelection/main.py"
 )
 
 echo "========== Iniciando execução dos modelos =========="
@@ -51,7 +51,7 @@ STATUS=0
 for MODEL in "${MODELS[@]}"; do
     echo ""
     echo "Executando: $MODEL"
-    python3 "$MODEL" test
+    python3 "$MODEL" train_test
     if [ $? -eq 0 ]; then
         echo "✓ $MODEL completado com sucesso"
     else

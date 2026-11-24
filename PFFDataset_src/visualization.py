@@ -207,7 +207,7 @@ def plot_tensorized_frames(
         matplotlib Figure object
     """
     # Import here to avoid circular imports
-    from Simplified_EPV_in_PFF_Data.PFFDataset_src_2.tensorizer import get_default_bins, get_uniform_bins
+    from Simplified_EPV_in_PFF_Data.PFFDataset_src.tensorizer import get_default_bins, get_uniform_bins
 
     # Determine bins for grid overlay
     if grid_shape is not None:

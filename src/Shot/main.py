@@ -14,18 +14,18 @@ else:
 
 
 def _ensure_baseline_xg_artifacts():
-    try:
-        return load_baseline_xg()
-    except FileNotFoundError:
-        dataset = build_baseline_xg_dataset()
-        return train_baseline_xg(dataset)
+    # try:
+    #     return load_baseline_xg()
+    # except FileNotFoundError:
+    dataset = build_baseline_xg_dataset()
+    return train_baseline_xg(dataset)
 
 
 def Train() -> None:
     baseline_xg_artifacts = _ensure_baseline_xg_artifacts()
-    dataset, dataset_summary = build_shot_epv_dataset(baseline_xg_artifacts=baseline_xg_artifacts)
-    train_summary = ShotTrainer().run(dataset)
-    print(json.dumps({"dataset_summary": dataset_summary, "train_summary": train_summary}, indent=2, default=str))
+    # dataset, dataset_summary = build_shot_epv_dataset(baseline_xg_artifacts=baseline_xg_artifacts)
+    # train_summary = ShotTrainer().run(dataset)
+    # print(json.dumps({"dataset_summary": dataset_summary, "train_summary": train_summary}, indent=2, default=str))
 
 
 def Test() -> None:

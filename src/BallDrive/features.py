@@ -255,8 +255,11 @@ class BallDriveFeatureBuilder:
         if not required.issubset(set(tracking_df.columns)):
             return None
 
-        match_id = row.get("game_id")
-        frame_id = row.get("segment_start_frame_id", row.get("start_frame_id"))
+        match_id = row.get("game_id", row.get("match_id"))
+        frame_id = row.get(
+            "segment_start_frame_id",
+            row.get("start_frame_id", row.get("frame_id")),
+        )
         if pd.isna(match_id) or pd.isna(frame_id):
             return None
 
@@ -267,6 +270,7 @@ class BallDriveFeatureBuilder:
         window = tracking_df[(tracking_df["match_id"] == match_id) & (tracking_df["frame_id"].isin(frames))].copy()
         if window.empty:
             return None
+        window = window.reset_index(drop=True)
 
         unique_frames = sorted(window["frame_id"].dropna().astype(int).unique().tolist())
         if len(unique_frames) < 3:
@@ -334,17 +338,19 @@ class BallDriveFeatureBuilder:
         if not isinstance(arr, np.ndarray) or arr.ndim != 3:
             return float("nan")
 
-        last_frame_grid = arr[-1]
+        attack_control_grid = arr[0]
+        if not isinstance(attack_control_grid, np.ndarray) or attack_control_grid.ndim != 2:
+            return float("nan")
         ball_x_bl, ball_y_bl = self._to_gandula_bottom_left(float(row.get("ball_x_start", 0.0)), float(row.get("ball_y_start", 0.0)))
 
-        x_idx = int(np.clip(round(ball_x_bl), 0, last_frame_grid.shape[0] - 1))
-        y_idx = int(np.clip(round(ball_y_bl), 0, last_frame_grid.shape[1] - 1))
+        x_idx = int(np.clip(round(ball_x_bl), 0, attack_control_grid.shape[0] - 1))
+        y_idx = int(np.clip(round(ball_y_bl), 0, attack_control_grid.shape[1] - 1))
 
         try:
-            value = float(last_frame_grid[x_idx, y_idx])
+            value = float(attack_control_grid[x_idx, y_idx])
         except Exception:
             try:
-                value = float(last_frame_grid[y_idx, x_idx])
+                value = float(attack_control_grid[y_idx, x_idx])
             except Exception:
                 return float("nan")
         if not np.isfinite(value):
@@ -366,8 +372,11 @@ class BallDriveFeatureBuilder:
 
         frame_slice = None
         if tracking_df is not None and not tracking_df.empty:
-            match_id = row.get("game_id")
-            frame_id = row.get("segment_start_frame_id", row.get("start_frame_id"))
+            match_id = row.get("game_id", row.get("match_id"))
+            frame_id = row.get(
+                "segment_start_frame_id",
+                row.get("start_frame_id", row.get("frame_id")),
+            )
             if pd.notna(match_id) and pd.notna(frame_id):
                 frame_slice = tracking_df[
                     (tracking_df["match_id"] == int(match_id))
