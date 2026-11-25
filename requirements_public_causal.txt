@@ -1,0 +1,12 @@
+# Isolated public-study reproduction environment (Python 3.10).
+# Do not upgrade the existing private PFF environment in place.
+numpy==2.2.6
+pandas==2.3.3
+scipy==1.15.3
+scikit-learn==1.6.1
+joblib==1.5.3
+matplotlib==3.10.9
+pyarrow==24.0.0
+nbformat==5.10.4
+nbclient==0.10.4
+ipykernel==7.2.0

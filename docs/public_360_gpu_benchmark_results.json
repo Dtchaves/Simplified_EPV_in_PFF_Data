@@ -1,0 +1,84 @@
+{
+  "causal_validation_passed": false,
+  "comparisons": [
+    {
+      "max_absolute_difference": 0.05682346224784851,
+      "mean_absolute_difference": 0.0015645783663757855,
+      "reference": "xgboost_cpu",
+      "task": "m0"
+    },
+    {
+      "max_absolute_difference": 0.09919001127425991,
+      "mean_absolute_difference": 0.0023231631105553735,
+      "reference": "sklearn_cpu",
+      "task": "m0"
+    },
+    {
+      "max_absolute_difference": 0.07176388055086136,
+      "mean_absolute_difference": 0.008424846711297318,
+      "reference": "xgboost_cpu",
+      "task": "m1"
+    },
+    {
+      "max_absolute_difference": 0.11482720137267044,
+      "mean_absolute_difference": 0.008641888777429822,
+      "reference": "sklearn_cpu",
+      "task": "m1"
+    },
+    {
+      "max_absolute_difference": 0.04047913184995067,
+      "mean_absolute_difference": 0.0016870947717443471,
+      "reference": "xgboost_cpu",
+      "task": "propensity"
+    },
+    {
+      "max_absolute_difference": 0.10223976521442253,
+      "mean_absolute_difference": 0.002255506606957383,
+      "reference": "sklearn_cpu",
+      "task": "propensity"
+    }
+  ],
+  "cuda_probe_passed": true,
+  "maximum_gpu_memory_mib": 524.0,
+  "maximum_gpu_utilization_pct": 37.0,
+  "production_changed": false,
+  "status": "completed",
+  "summary": [
+    {
+      "cuda_speedup_vs_sklearn_cpu": 1.3655326874880207,
+      "cuda_speedup_vs_xgb_cpu": 1.0305068128231676,
+      "profile": "compact_grouped_fit",
+      "sklearn_cpu": 7.19858607230708,
+      "task": "m0",
+      "xgboost_cpu": 5.432452886831015,
+      "xgboost_cuda": 5.271632190328091
+    },
+    {
+      "cuda_speedup_vs_sklearn_cpu": 1.023468300776463,
+      "cuda_speedup_vs_xgb_cpu": 0.9932773792291649,
+      "profile": "compact_grouped_fit",
+      "sklearn_cpu": 4.897685982752591,
+      "task": "m1",
+      "xgboost_cpu": 4.7532109138555825,
+      "xgboost_cuda": 4.785381217021495
+    },
+    {
+      "cuda_speedup_vs_sklearn_cpu": 1.3987352154122563,
+      "cuda_speedup_vs_xgb_cpu": 1.084722904125471,
+      "profile": "compact_grouped_fit",
+      "sklearn_cpu": 28.59850978385657,
+      "task": "propensity",
+      "xgboost_cpu": 22.1782208988443,
+      "xgboost_cuda": 20.44597824430093
+    },
+    {
+      "cuda_speedup_vs_sklearn_cpu": 1.3549639323857052,
+      "cuda_speedup_vs_xgb_cpu": 1.0318395267146792,
+      "profile": "full_candidate_outer_fold",
+      "sklearn_cpu": 71.93664516601712,
+      "task": "complete_nuisance_selection",
+      "xgboost_cpu": 54.78158652596176,
+      "xgboost_cuda": 53.09118822030723
+    }
+  ]
+}

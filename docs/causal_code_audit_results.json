@@ -1,0 +1,141 @@
+{
+  "review_date": "2026-09-30",
+  "scope": "Read-only diagnostics of the existing Vulcano workflow; no experiment fixes or public-data run.",
+  "notebook_probes": {
+    "notebook_sha256": "7516c5a59f9459e04dcb7ad618c05da6d23b1c163105414195897c72561fff97",
+    "crossfit_match_exclusion": {
+      "status": "FAIL",
+      "details": [
+        {
+          "fit_arm": 0,
+          "opposite_arm_model_predictions": 16,
+          "opposite_arm_same_match_predictions": 12,
+          "affected_opposite_arm_decisions": 4,
+          "own_arm_same_match_predictions": 0
+        },
+        {
+          "fit_arm": 1,
+          "opposite_arm_model_predictions": 16,
+          "opposite_arm_same_match_predictions": 12,
+          "affected_opposite_arm_decisions": 4,
+          "own_arm_same_match_predictions": 0
+        }
+      ]
+    },
+    "bootstrap_original_match_exclusion": {
+      "status": "FAIL",
+      "leaking_folds": [
+        {
+          "fold": 2,
+          "original_matches_in_both": [
+            0
+          ]
+        },
+        {
+          "fold": 3,
+          "original_matches_in_both": [
+            0
+          ]
+        }
+      ]
+    },
+    "primary_donor_weight_bound": {
+      "status": "FAIL",
+      "treated_propensity": 0.2,
+      "donor_propensity": 0.99,
+      "donor_retained": true,
+      "donor_odds_weight": 98.99999999999991,
+      "threshold_implied_weight_bound_if_applied_to_donors": 19,
+      "interpretation": "Current design permits this; a bounded supported primary must change it."
+    },
+    "empirical_support_outside_match": {
+      "status": "FAIL",
+      "interpretation": "Support counts include same-match donors; this is not cross-fitted support."
+    },
+    "support_compatible_propensity_correction": {
+      "status": "FAIL",
+      "known_supported_target_ATT": 0,
+      "current_asymmetric_support_ATT": -4.949999999999996,
+      "shared_domain_support_ATT": 0,
+      "propensity_model": "exact assignment probabilities",
+      "outcome_model": "deliberately misspecified constant zero",
+      "interpretation": "A zero-effect expected-count fixture demonstrates that out-of-target donor residuals invalidate the ordinary propensity-correct branch for this supported target. This is a structural counterexample, not an estimate of empirical bias."
+    },
+    "aipw_formula_and_decomposition": {
+      "status": "PASS",
+      "ATT": 1.0500000000000003,
+      "decomposition_ATT": 1.0500000000000003,
+      "control_weight_sum": 8,
+      "treated_count": 2,
+      "residual_denominator": "treated_count",
+      "normalized_residual_alternative_ATT": 0.45,
+      "row_contributions": [
+        {
+          "row_id": 0,
+          "Z": 1,
+          "ATT_contribution": 0.375
+        },
+        {
+          "row_id": 1,
+          "Z": 1,
+          "ATT_contribution": -0.125
+        },
+        {
+          "row_id": 2,
+          "Z": 0,
+          "ATT_contribution": 0.40000000000000013
+        },
+        {
+          "row_id": 3,
+          "Z": 0,
+          "ATT_contribution": 0.40000000000000013
+        }
+      ],
+      "interpretation": "Arithmetic agrees. Count and weight-sum normalization differ in finite samples; neither discrepancy alone establishes a coding error."
+    }
+  },
+  "saved_L1_ATT_reconstruction": {
+    "interpretation": "Reconstructs the existing L1 export from saved predictions; no nuisance refit or causal-validity claim.",
+    "n_rows": 58123,
+    "n_treated": 5806,
+    "n_controls": 52317,
+    "ATT": 0.443858988592705,
+    "expected_ATT": 0.44385898859270523,
+    "matches_expected": true,
+    "observed_treated_mean": 0.12986565621770582,
+    "mu0_on_treated_mean": 0.05945931674635648,
+    "weighted_control_residual_sum": -2168.266080798592,
+    "control_residual_correction_divided_by_treated_count": -0.37345264912135584,
+    "control_weight_sum": 23244.90955685969,
+    "normalized_weighted_control_residual_mean": -0.09327917906046342,
+    "control_ESS": 63.65457882879458,
+    "maximum_control_weight": 1228.6716961790037,
+    "saved_w_att_matches_odds": true,
+    "saved_mu0_residual_matches": true,
+    "controls_outside_shot_propensity_gate": {
+      "threshold": 0.95,
+      "n": 82,
+      "ATT_contribution_sum": 0.3597778377811439,
+      "weight_sum_fraction": 0.6884288284791648
+    },
+    "prediction_ranges": {
+      "mu0_controls_min": -0.0573018840400633,
+      "mu0_controls_max": 0.3112806545320396,
+      "mu0_treated_min": -0.010939003447997458,
+      "mu0_treated_max": 0.20476475377606773
+    },
+    "formula": "sum[Z*(Y-mu0) - (1-Z)*e/(1-e)*(Y-mu0)] / sum(Z)",
+    "row_calculation": "contributions() returns every saved row with audit_residual, audit_odds_weight, audit_ATT_numerator and audit_ATT_contribution; no rows are silently omitted."
+  },
+  "DoWhy_synthetic_probe": {
+    "version": "0.14",
+    "n_rows": 2000,
+    "data_seed": 12,
+    "placebo_seed": 17,
+    "true_effect": 2,
+    "original_ATT": 2.1303964133,
+    "stale_score_placebo_ATT": -2.0429340078,
+    "refitted_score_placebo_ATT": 0.0718617897,
+    "scope": "Synthetic mechanism only. Does not resolve the real-data placebo result."
+  }
+}

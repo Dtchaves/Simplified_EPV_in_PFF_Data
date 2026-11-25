@@ -1,2 +1,3 @@
-/results/models/
+/results/models/*
+!/results/models/public_statsbomb_causal_study.ipynb
 /data/*

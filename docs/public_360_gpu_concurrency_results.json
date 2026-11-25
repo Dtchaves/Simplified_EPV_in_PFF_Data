@@ -1,0 +1,492 @@
+{
+  "conditions": [
+    {
+      "backend": "xgboost_cuda",
+      "cuda_models": 64,
+      "jobs": 4,
+      "jobs_per_hour": 135.3757424349402,
+      "mean_task_fit_seconds": 20.479478334309533,
+      "records": [
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 20.092323439195752,
+          "job": 0,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.028535302262753248,
+          "process_seconds": 26.144976523239166,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 20.120858741458505,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:49:04] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 20.994512262754142,
+          "job": 1,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.07549588568508625,
+          "process_seconds": 27.14474982395768,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 21.07000814843923,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:49:30] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 20.40525650093332,
+          "job": 2,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.02924183802679181,
+          "process_seconds": 26.5855252048932,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 20.43449833896011,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:49:57] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 20.264140913262963,
+          "job": 3,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.02840719511732459,
+          "process_seconds": 26.46099316002801,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 20.292548108380288,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:50:24] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        }
+      ],
+      "wall_seconds": 106.37060776911676,
+      "workers": 1
+    },
+    {
+      "backend": "xgboost_cuda",
+      "cuda_models": 64,
+      "jobs": 4,
+      "jobs_per_hour": 250.61978366320423,
+      "mean_task_fit_seconds": 22.528881702688523,
+      "records": [
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 21.86021123500541,
+          "job": 1,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.02921218518167734,
+          "process_seconds": 28.138817714061588,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 21.889423420187086,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:50:50] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 22.01703602168709,
+          "job": 0,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.0834834729321301,
+          "process_seconds": 28.21446891501546,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 22.10051949461922,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:50:50] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 22.915800287853926,
+          "job": 3,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.0689670997671783,
+          "process_seconds": 29.101470564026386,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 22.984767387621105,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:51:19] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 23.059761628042907,
+          "job": 2,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.08105488028377295,
+          "process_seconds": 29.305510313250124,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 23.14081650832668,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:51:19] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        }
+      ],
+      "wall_seconds": 57.45755498437211,
+      "workers": 2
+    },
+    {
+      "backend": "xgboost_cuda",
+      "cuda_models": 64,
+      "jobs": 4,
+      "jobs_per_hour": 396.80239208374957,
+      "mean_task_fit_seconds": 24.24507362919394,
+      "records": [
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 22.532479758374393,
+          "job": 3,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.10521821212023497,
+          "process_seconds": 29.378867444116622,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 22.637697970494628,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:51:49] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 21.84656237438321,
+          "job": 1,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.031645484268665314,
+          "process_seconds": 31.048446922097355,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 21.878207858651876,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:51:52] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 25.158526782877743,
+          "job": 2,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.07936877897009254,
+          "process_seconds": 33.0140850613825,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 25.237895561847836,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:51:51] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        },
+        {
+          "backend": "xgboost_cuda",
+          "fit_seconds": 27.144461392890662,
+          "job": 0,
+          "metrics": {
+            "brier": 0.03641386209986102,
+            "log_loss": 0.118811762982439
+          },
+          "prediction_seconds": 0.08203173289075494,
+          "process_seconds": 36.274116329383105,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 27.226493125781417,
+          "train_rows": 29687,
+          "trained_cuda_models": 16,
+          "trained_xgboost_models": 16,
+          "warnings": [
+            "[08:51:51] WARNING: /__w/xgboost/xgboost/src/common/error_msg.cc:62: Falling back to prediction using DMatrix due to mismatched devices. This might lead to higher memory usage and slower performance. XGBoost is running on: cuda:0, while the input data is on: cpu.\nPotential solutions:\n- Use a data structure that matches the device ordinal in the booster.\n- Set the device for booster before call to inplace_predict.\n\nThis warning will only be shown once.\n"
+          ]
+        }
+      ],
+      "wall_seconds": 36.29010380804539,
+      "workers": 4
+    },
+    {
+      "backend": "xgboost_cpu",
+      "cuda_models": 0,
+      "jobs": 4,
+      "jobs_per_hour": 336.6320338963794,
+      "mean_task_fit_seconds": 29.41972601809539,
+      "records": [
+        {
+          "backend": "xgboost_cpu",
+          "fit_seconds": 23.769518573768437,
+          "job": 3,
+          "metrics": {
+            "brier": 0.03641735680029203,
+            "log_loss": 0.11877963699270756
+          },
+          "prediction_seconds": 0.02867142576724291,
+          "process_seconds": 30.57712772488594,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 23.79818999953568,
+          "train_rows": 29687,
+          "trained_cuda_models": 0,
+          "trained_xgboost_models": 16,
+          "warnings": []
+        },
+        {
+          "backend": "xgboost_cpu",
+          "fit_seconds": 29.454585088882595,
+          "job": 1,
+          "metrics": {
+            "brier": 0.03641735680029203,
+            "log_loss": 0.11877963699270756
+          },
+          "prediction_seconds": 0.0403308947570622,
+          "process_seconds": 38.12637645797804,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 29.494915983639657,
+          "train_rows": 29687,
+          "trained_cuda_models": 0,
+          "trained_xgboost_models": 16,
+          "warnings": []
+        },
+        {
+          "backend": "xgboost_cpu",
+          "fit_seconds": 31.417256378103048,
+          "job": 2,
+          "metrics": {
+            "brier": 0.03641735680029203,
+            "log_loss": 0.11877963699270756
+          },
+          "prediction_seconds": 0.137807487975806,
+          "process_seconds": 41.350089732091874,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 31.555063866078854,
+          "train_rows": 29687,
+          "trained_cuda_models": 0,
+          "trained_xgboost_models": 16,
+          "warnings": []
+        },
+        {
+          "backend": "xgboost_cpu",
+          "fit_seconds": 32.78988055884838,
+          "job": 0,
+          "metrics": {
+            "brier": 0.03641735680029203,
+            "log_loss": 0.11877963699270756
+          },
+          "prediction_seconds": 0.04085366427898407,
+          "process_seconds": 42.759779108222574,
+          "provenance_records": 18,
+          "return_code": 0,
+          "selected_spec": {
+            "iterations": 100,
+            "kind": "hgb",
+            "leaves": 7
+          },
+          "status": "completed",
+          "task": "propensity",
+          "test_rows": 7356,
+          "total_seconds": 32.830734223127365,
+          "train_rows": 29687,
+          "trained_cuda_models": 0,
+          "trained_xgboost_models": 16,
+          "warnings": []
+        }
+      ],
+      "wall_seconds": 42.7766776480712,
+      "workers": 4
+    }
+  ],
+  "maximum_gpu_memory_mib": 1890.0,
+  "maximum_gpu_utilization_pct": 69.0,
+  "production_changed": false,
+  "status": "completed"
+}
